@@ -47,3 +47,6 @@ npm run dev
 ```
 - Press `a` to open on Android emulator or connect via Expo Go on physical device.
 - Press `i` to open on iOS simulator.
+
+
+clear db: 'Get-ChildItem -Path . -Filter "*.db*" -Recurse -Force'

@@ -17,6 +17,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { useGymStore } from '../store/useGymStore';
@@ -61,8 +62,10 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
   const [title, setTitle] = useState('Coach');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [role, setRole] = useState('');
   const [age, setAge] = useState('');
   const [address, setAddress] = useState('');
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
   // Step 2: 4-digit PIN & Verification
   const [pin, setPin] = useState('');
@@ -249,6 +252,27 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
     }
   };
 
+  const handlePickAvatar = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow photo access to pick a profile picture.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets[0]) {
+        setAvatarUri(result.assets[0].uri);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Could not open image picker.');
+    }
+  };
+
   // ── STEP 1: SUBMIT PROFILE ───────────────────
   const handleNextFromProfile = () => {
     if (!firstName.trim()) {
@@ -357,6 +381,13 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
       await saveTrainerProfile({
         id: `tr_${Date.now()}`,
         name: fullName,
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        title: title || undefined,
+        role: role.trim() || undefined,
+        age: age ? parseInt(age, 10) : undefined,
+        address: address.trim() || undefined,
+        avatar_uri: avatarUri || undefined,
         pin_hash: pin.trim() || undefined,
         biometric_enabled: false,
       });
@@ -504,7 +535,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
               opacity: containerOpacity,
             },
           ]}
-          pointerEvents={view === 'setup' ? 'auto' : 'none'}
+          pointerEvents={view === 'setup' ? 'box-none' : 'none'}
         >
           {/* Back Button positioned safely below status bar/notification line */}
           <TouchableOpacity
@@ -590,7 +621,31 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                   keyboardShouldPersistTaps="handled"
                   showsVerticalScrollIndicator={false}
                 >
-                  {/* Inputs Container spaced down from top */}
+                  {/* Avatar Picker */}
+                  <View style={styles.avatarPickerRow}>
+                    <TouchableOpacity
+                      style={styles.avatarPickerCircle}
+                      onPress={handlePickAvatar}
+                      activeOpacity={0.8}
+                    >
+                      {avatarUri ? (
+                        <Image
+                          source={{ uri: avatarUri }}
+                          style={styles.avatarPickerImage}
+                        />
+                      ) : (
+                        <View style={styles.avatarPickerPlaceholder}>
+                          <Ionicons name="person" size={36} color={colors.primary} />
+                        </View>
+                      )}
+                      <View style={styles.avatarCameraChip}>
+                        <Ionicons name="camera" size={14} color="#FFFFFF" />
+                      </View>
+                    </TouchableOpacity>
+                    <Text style={styles.avatarPickerHint}>Tap to add{`\n`}profile photo</Text>
+                  </View>
+
+                  {/* Inputs Container */}
                   <View style={styles.formFieldsTopWrapper}>
                     {/* Title Chips */}
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.titleChipRow}>
@@ -611,7 +666,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                       })}
                     </ScrollView>
 
-                    {/* Form Pill Inputs matching Image 1 */}
+                    {/* First Name */}
                     <TextInput
                       style={styles.pillInput}
                       placeholder="First Name *"
@@ -621,6 +676,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                       autoCapitalize="words"
                     />
 
+                    {/* Last Name */}
                     <TextInput
                       style={styles.pillInput}
                       placeholder="Last Name *"
@@ -630,6 +686,17 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                       autoCapitalize="words"
                     />
 
+                    {/* Role */}
+                    <TextInput
+                      style={styles.pillInput}
+                      placeholder="Role (e.g. Head Coach, Gym Owner)"
+                      placeholderTextColor="#8B9E93"
+                      value={role}
+                      onChangeText={setRole}
+                      autoCapitalize="words"
+                    />
+
+                    {/* Age */}
                     <TextInput
                       style={styles.pillInput}
                       placeholder="Age (e.g. 28)"
@@ -640,6 +707,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                       maxLength={3}
                     />
 
+                    {/* Address */}
                     <TextInput
                       style={styles.pillInput}
                       placeholder="Address / City"
@@ -649,10 +717,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                     />
                   </View>
 
-                  {/* Flexible spacer pushing the button down near bottom */}
-                  <View style={{ flex: 1, minHeight: 36 }} />
-
-                  {/* Next Button near bottom */}
+                  {/* Next Button */}
                   <TouchableOpacity
                     style={styles.pillActionBtn}
                     onPress={handleNextFromProfile}
@@ -837,9 +902,6 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                       </TouchableOpacity>
                     </View>
                   </View>
-
-                  {/* Flexible spacer pushing the button down near bottom */}
-                  <View style={{ flex: 1, minHeight: 36 }} />
 
                   {/* Complete Setup Action Button */}
                   <TouchableOpacity
@@ -1073,6 +1135,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.16,
     shadowRadius: 20,
     elevation: 20,
+    zIndex: 100,
     overflow: 'hidden',
     paddingTop: 22,
   },
@@ -1096,11 +1159,64 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingHorizontal: 26,
     paddingTop: 14,
-    paddingBottom: 28,
-    justifyContent: 'space-between',
+    paddingBottom: 40,
   },
   formFieldsTopWrapper: {
-    marginTop: 12,
+    marginTop: 4,
+  },
+
+  // ── AVATAR PICKER ─────────────────────────────
+  avatarPickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  avatarPickerCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: '#EEF3F0',
+    borderWidth: 2,
+    borderColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    overflow: 'visible',
+  },
+  avatarPickerImage: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+  },
+  avatarPickerPlaceholder: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#EEF3F0',
+  },
+  avatarCameraChip: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  avatarPickerHint: {
+    marginLeft: 16,
+    fontSize: 13,
+    color: colors.textSecondary,
+    fontWeight: '500',
+    lineHeight: 20,
   },
 
   // Title Chips
@@ -1146,7 +1262,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10, // near bottom, but not bottom-most!
+    marginTop: 18,
+    marginBottom: 10,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.24,

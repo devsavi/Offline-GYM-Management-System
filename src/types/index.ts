@@ -15,9 +15,15 @@ export type ExerciseCategory =
 
 export interface Trainer {
   id: string;
-  name: string;
+  name: string;          // full display name (title + first + last)
+  first_name?: string;
+  last_name?: string;
+  title?: string;
+  role?: string;         // e.g. Head Coach, Gym Owner, Trainer
+  age?: number;
   email?: string;
   phone?: string;
+  address?: string;
   pin_hash?: string;
   biometric_enabled: boolean;
   avatar_uri?: string;

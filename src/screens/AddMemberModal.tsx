@@ -269,8 +269,9 @@ const styles = StyleSheet.create({
   },
   saveBtn: {
     backgroundColor: colors.primary,
-    borderRadius: rounded.md,
-    paddingVertical: 14,
+    borderRadius: 14,
+    height: 50,
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: 24,
     marginBottom: 10,
@@ -280,5 +281,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
+    letterSpacing: 0.5,
   },
 });

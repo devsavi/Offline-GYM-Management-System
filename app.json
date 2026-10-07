@@ -20,7 +20,7 @@
     "android": {
       "package": "com.gripstate.app",
       "backgroundColor": "#0A3622",
-      "softwareKeyboardLayoutMode": "pan",
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "READ_CALENDAR",
         "WRITE_CALENDAR",

@@ -28,6 +28,26 @@ export async function initDatabase(): Promise<void> {
   await db.execAsync(CREATE_TABLES_SQL);
   console.log('[SQLite] Schema created successfully.');
 
+  // Safe migration for additional trainer columns
+  try {
+    await db.runAsync('ALTER TABLE trainers ADD COLUMN title TEXT;');
+  } catch {}
+  try {
+    await db.runAsync('ALTER TABLE trainers ADD COLUMN age INTEGER;');
+  } catch {}
+  try {
+    await db.runAsync('ALTER TABLE trainers ADD COLUMN address TEXT;');
+  } catch {}
+  try {
+    await db.runAsync('ALTER TABLE trainers ADD COLUMN first_name TEXT;');
+  } catch {}
+  try {
+    await db.runAsync('ALTER TABLE trainers ADD COLUMN last_name TEXT;');
+  } catch {}
+  try {
+    await db.runAsync('ALTER TABLE trainers ADD COLUMN role TEXT;');
+  } catch {}
+
   // 3. Seed Pre-populated Exercises Dictionary atomically
   try {
     const existing = await db.getFirstAsync<{ count: number }>(
@@ -84,4 +104,24 @@ export async function withTransaction<T>(
     result = await action(db);
   });
   return result!;
+}
+
+export async function clearAllDatabaseData(): Promise<void> {
+  const db = await getDatabase();
+  try {
+    await db.execAsync(`
+      DELETE FROM check_ins;
+      DELETE FROM payments;
+      DELETE FROM plan_exercises;
+      DELETE FROM workout_plans;
+      DELETE FROM measurements;
+      DELETE FROM custom_measurement_fields;
+      DELETE FROM members;
+      DELETE FROM locations;
+      DELETE FROM trainers;
+    `);
+    console.log('[SQLite] All application data cleared successfully.');
+  } catch (e) {
+    console.error('[SQLite] Error clearing database:', e);
+  }
 }

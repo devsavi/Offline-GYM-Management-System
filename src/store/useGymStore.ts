@@ -8,7 +8,7 @@ import {
 import { trainerService } from '../database/services/trainerService';
 import { locationService } from '../database/services/locationService';
 import { memberService } from '../database/services/memberService';
-import { initDatabase } from '../database/db';
+import { initDatabase, clearAllDatabaseData, queryFirst, runQuery } from '../database/db';
 
 interface GymState {
   // Initialization & Auth
@@ -33,12 +33,19 @@ interface GymState {
   // Actions
   initialize: () => Promise<void>;
   authenticate: (pin?: string) => Promise<boolean>;
+  clearAllData: () => Promise<void>;
+  lockApp: () => void;
   loadTrainer: () => Promise<void>;
   saveTrainerProfile: (profile: Omit<Trainer, 'created_at'>) => Promise<void>;
+  updateTrainerProfile: (updates: Partial<Trainer>) => Promise<void>;
+  updateTrainerPin: (newPin: string) => Promise<void>;
+  removeTrainerPin: () => Promise<void>;
 
   loadLocations: () => Promise<void>;
   selectLocation: (location: Location) => Promise<void>;
   createLocation: (name: string, description?: string, address?: string) => Promise<Location>;
+  updateLocation: (id: string, name: string, description?: string, address?: string) => Promise<void>;
+  deleteLocation: (id: string) => Promise<void>;
 
   loadMembers: () => Promise<void>;
   setSearchQuery: (query: string) => void;
@@ -107,6 +114,28 @@ export const useGymStore = create<GymState>((set, get) => ({
     return false;
   },
 
+  lockApp: () => {
+    const { trainer } = get();
+    if (trainer?.pin_hash) {
+      set({ isAuthenticated: false });
+    }
+  },
+
+  clearAllData: async () => {
+    await clearAllDatabaseData();
+    set({
+      trainer: null,
+      locations: [],
+      selectedLocation: null,
+      members: [],
+      locationStats: null,
+      searchQuery: '',
+      statusFilter: 'all',
+      isAuthenticated: false,
+      errorMessage: null,
+    });
+  },
+
   loadTrainer: async () => {
     const trainer = await trainerService.getProfile();
     set({ trainer });
@@ -114,7 +143,27 @@ export const useGymStore = create<GymState>((set, get) => ({
 
   saveTrainerProfile: async (profile) => {
     const saved = await trainerService.saveProfile(profile);
+    set({ trainer: saved, isAuthenticated: true });
+  },
+
+  updateTrainerProfile: async (updates) => {
+    const { trainer } = get();
+    if (!trainer) return;
+    const merged = { ...trainer, ...updates };
+    const saved = await trainerService.saveProfile(merged);
     set({ trainer: saved });
+  },
+
+  updateTrainerPin: async (newPin: string) => {
+    await trainerService.updatePin(newPin);
+    const trainer = await trainerService.getProfile();
+    set({ trainer });
+  },
+
+  removeTrainerPin: async () => {
+    await trainerService.removePin();
+    const trainer = await trainerService.getProfile();
+    set({ trainer, isAuthenticated: true });
   },
 
   loadLocations: async () => {
@@ -136,6 +185,24 @@ export const useGymStore = create<GymState>((set, get) => ({
     await get().loadLocations();
     await get().selectLocation(newLoc);
     return newLoc;
+  },
+
+  updateLocation: async (id: string, name: string, description?: string, address?: string) => {
+    await locationService.updateLocation(id, name, description, address);
+    await get().loadLocations();
+    const { selectedLocation } = get();
+    if (selectedLocation?.id === id) {
+      set({ selectedLocation: { ...selectedLocation, name, description, address } });
+    }
+  },
+
+  deleteLocation: async (id: string) => {
+    await locationService.deleteLocation(id);
+    await get().loadLocations();
+    const { locations, selectedLocation } = get();
+    if (selectedLocation?.id === id && locations.length > 0) {
+      await get().selectLocation(locations[0]);
+    }
   },
 
   loadMembers: async () => {

@@ -105,3 +105,81 @@ export const shadows = {
     elevation: 8,
   },
 };
+
+export const buttonStyles = {
+  primary: {
+    height: 52,
+    borderRadius: 9999,
+    backgroundColor: '#0A3622',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: 24,
+    shadowColor: '#0A3622',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  accent: {
+    height: 52,
+    borderRadius: 9999,
+    backgroundColor: '#10B981',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: 24,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  secondary: {
+    height: 52,
+    borderRadius: 9999,
+    backgroundColor: '#F1F5F9',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: 24,
+  },
+  outline: {
+    height: 52,
+    borderRadius: 9999,
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: '#0A3622',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: 24,
+  },
+  danger: {
+    height: 52,
+    borderRadius: 9999,
+    backgroundColor: '#EF4444',
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    paddingHorizontal: 24,
+  },
+  text: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+};
+
+// Shared pill input style — use across the entire app for consistency
+export const pillInputStyle = {
+  height: 50,
+  backgroundColor: '#EEF3F0',
+  borderRadius: 9999,
+  paddingHorizontal: 20,
+  fontSize: 15,
+  color: '#0F172A',
+  marginBottom: 12,
+};
+

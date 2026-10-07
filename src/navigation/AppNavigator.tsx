@@ -7,18 +7,26 @@ import { DashboardScreen } from '../screens/DashboardScreen';
 import { MemberProfileScreen } from '../screens/MemberProfileScreen';
 import { PlanBuilderScreen } from '../screens/PlanBuilderScreen';
 import { AddMemberModal } from '../screens/AddMemberModal';
+import { AuthLockScreen } from '../screens/AuthLockScreen';
 import { useGymStore } from '../store/useGymStore';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export const AppNavigator: React.FC = () => {
-  const { trainer, locations } = useGymStore();
+  const { trainer, locations, isAuthenticated } = useGymStore();
 
-  const isConfigured = trainer && locations.length > 0;
+  const isConfigured = Boolean(trainer && locations.length > 0);
+  const requiresAuth = isConfigured && Boolean(trainer?.pin_hash) && !isAuthenticated;
+
+  // Prompt password / PIN when returning user opens app with PIN protection enabled
+  if (requiresAuth) {
+    return <AuthLockScreen />;
+  }
 
   return (
     <NavigationContainer>
       <Stack.Navigator
+        key={isConfigured ? 'app-configured' : 'app-initial'}
         initialRouteName={isConfigured ? 'Dashboard' : 'Onboarding'}
         screenOptions={{
           headerShown: false,
