@@ -195,7 +195,7 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
   const handleExportPDF = async (plan: WorkoutPlan) => {
     if (!member) return;
     try {
-      await exportWorkoutPlanPDF(member, plan, selectedLocation?.name || 'ApexGym');
+      await exportWorkoutPlanPDF(member, plan, selectedLocation?.name || 'GripState');
     } catch (e: any) {
       Alert.alert('PDF Export Error', e.message);
     }

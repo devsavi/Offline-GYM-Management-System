@@ -19,7 +19,7 @@ export async function getOrCreateGymCalendar(): Promise<string | null> {
   if (!hasPermission) return null;
 
   const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
-  const existing = calendars.find((c) => c.title === 'ApexGym Workouts' || c.isPrimary);
+  const existing = calendars.find((c) => c.title === 'GripState Workouts' || c.isPrimary);
 
   if (existing) {
     return existing.id;
@@ -29,12 +29,12 @@ export async function getOrCreateGymCalendar(): Promise<string | null> {
   if (Platform.OS === 'ios') {
     const defaultCalendar = await Calendar.getDefaultCalendarAsync();
     const newCalendarId = await Calendar.createCalendarAsync({
-      title: 'ApexGym Workouts',
+      title: 'GripState Workouts',
       color: '#10B981',
       entityType: Calendar.EntityTypes.EVENT,
       sourceId: defaultCalendar.source.id,
       source: defaultCalendar.source,
-      name: 'ApexGym',
+      name: 'GripState',
       ownerAccount: 'personal',
       accessLevel: Calendar.CalendarAccessLevel.OWNER,
     });
@@ -65,7 +65,7 @@ export async function addWorkoutPlanToCalendar(
       title: `🏋️ ${plan.title} - ${memberName}`,
       startDate: startDate,
       endDate: isNaN(endDate.getTime()) ? new Date(startDate.getTime() + 60 * 60 * 1000) : endDate,
-      notes: `ApexGym Workout Plan for ${memberName}.\n${plan.notes || ''}`,
+      notes: `GripState Workout Plan for ${memberName}.\n${plan.notes || ''}`,
       timeZone: 'UTC',
       alarms: [{ relativeOffset: -30 }], // 30 min reminder
     });

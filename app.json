@@ -1,23 +1,26 @@
 {
   "expo": {
-    "name": "ApexGym Manager",
-    "slug": "offline-gym-management-system",
+    "name": "GripState",
+    "slug": "gripstate-gym-management",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "splash": {
-      "resizeMode": "contain",
+      "resizeMode": "cover",
       "backgroundColor": "#0A3622"
     },
     "ios": {
       "supportsTablet": true,
+      "bundleIdentifier": "com.gripstate.app",
       "infoPlist": {
-        "NSCalendarsUsageDescription": "ApexGym needs calendar access to schedule workout sessions.",
-        "NSFaceIDUsageDescription": "ApexGym uses Face ID / Touch ID to secure gym client records."
+        "NSCalendarsUsageDescription": "GripState needs calendar access to schedule workout sessions.",
+        "NSFaceIDUsageDescription": "GripState uses Face ID / Touch ID to secure gym client records."
       }
     },
     "android": {
+      "package": "com.gripstate.app",
       "backgroundColor": "#0A3622",
+      "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "READ_CALENDAR",
         "WRITE_CALENDAR",
@@ -27,8 +30,7 @@
     },
     "plugins": [
       "expo-calendar",
-      "expo-local-authentication",
-      "expo-font"
+      "expo-local-authentication"
     ]
   }
 }

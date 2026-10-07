@@ -8,7 +8,7 @@ export async function getDatabase(): Promise<SQLite.SQLiteDatabase> {
   if (dbInstance) {
     return dbInstance;
   }
-  dbInstance = await SQLite.openDatabaseAsync('apex_gym_offline.db');
+  dbInstance = await SQLite.openDatabaseAsync('gripstate.db');
   return dbInstance;
 }
 
