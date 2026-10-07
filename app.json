@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "ApexGym Manager",
+    "slug": "offline-gym-management-system",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0A3622"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCalendarsUsageDescription": "ApexGym needs calendar access to schedule workout sessions.",
+        "NSFaceIDUsageDescription": "ApexGym uses Face ID / Touch ID to secure gym client records."
+      }
+    },
+    "android": {
+      "backgroundColor": "#0A3622",
+      "permissions": [
+        "READ_CALENDAR",
+        "WRITE_CALENDAR",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ]
+    },
+    "plugins": [
+      "expo-calendar",
+      "expo-local-authentication",
+      "expo-font"
+    ]
+  }
+}

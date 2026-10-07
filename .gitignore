@@ -1,0 +1,60 @@
+# --- Expo & React Native ---
+node_modules/
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# --- Native Build Artifacts ---
+ios/
+android/
+
+# --- Expo Local SQLite Database ---
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# --- TypeScript Build Cache ---
+*.tsbuildinfo
+
+# --- Environment & Secrets ---
+.env
+.env.local
+.env.development
+.env.production
+*.pem
+
+# --- npm / Yarn ---
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json.bak
+
+# --- macOS ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# --- Windows ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# --- Expo Temporary ---
+.expo-font-*
+node_modules
+node_modules/.expo-font-*
+
+# --- Metro Bundler Cache ---
+.metro-health-check*

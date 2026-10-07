@@ -1,0 +1,67 @@
+import { queryFirst, runQuery } from '../db';
+import { Trainer } from '../../types';
+
+export const trainerService = {
+  async getProfile(): Promise<Trainer | null> {
+    const row = await queryFirst<any>('SELECT * FROM trainers LIMIT 1;');
+    if (!row) return null;
+    return {
+      ...row,
+      biometric_enabled: Boolean(row.biometric_enabled),
+    };
+  },
+
+  async saveProfile(profile: Omit<Trainer, 'created_at'>): Promise<Trainer> {
+    const existing = await this.getProfile();
+    const now = new Date().toISOString();
+
+    if (existing) {
+      await runQuery(
+        `UPDATE trainers
+         SET name = ?, email = ?, phone = ?, pin_hash = ?, biometric_enabled = ?, avatar_uri = ?
+         WHERE id = ?;`,
+        [
+          profile.name,
+          profile.email || null,
+          profile.phone || null,
+          profile.pin_hash || null,
+          profile.biometric_enabled ? 1 : 0,
+          profile.avatar_uri || null,
+          existing.id,
+        ]
+      );
+      return {
+        ...profile,
+        id: existing.id,
+        created_at: existing.created_at,
+      };
+    } else {
+      const id = profile.id || `tr_${Date.now()}`;
+      await runQuery(
+        `INSERT INTO trainers (id, name, email, phone, pin_hash, biometric_enabled, avatar_uri, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+        [
+          id,
+          profile.name,
+          profile.email || null,
+          profile.phone || null,
+          profile.pin_hash || null,
+          profile.biometric_enabled ? 1 : 0,
+          profile.avatar_uri || null,
+          now,
+        ]
+      );
+      return {
+        ...profile,
+        id,
+        created_at: now,
+      };
+    }
+  },
+
+  async verifyPin(enteredPin: string): Promise<boolean> {
+    const profile = await this.getProfile();
+    if (!profile || !profile.pin_hash) return true; // PIN not set
+    return profile.pin_hash === enteredPin;
+  },
+};
