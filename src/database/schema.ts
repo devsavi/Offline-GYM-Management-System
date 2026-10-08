@@ -121,12 +121,26 @@ CREATE TABLE IF NOT EXISTS check_ins (
   FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS payment_plans (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  amount REAL NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'LKR',
+  duration_value INTEGER NOT NULL DEFAULT 1,
+  duration_unit TEXT NOT NULL DEFAULT 'months',
+  member_limit INTEGER NOT NULL DEFAULT 1,
+  description TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS payments (
   id TEXT PRIMARY KEY,
   member_id TEXT NOT NULL,
   location_id TEXT NOT NULL,
   amount REAL NOT NULL,
-  currency TEXT DEFAULT 'USD',
+  currency TEXT DEFAULT 'LKR',
   period_type TEXT NOT NULL,
   period_label TEXT NOT NULL,
   due_date TEXT NOT NULL,
@@ -134,6 +148,13 @@ CREATE TABLE IF NOT EXISTS payments (
   status TEXT NOT NULL DEFAULT 'unpaid',
   payment_method TEXT,
   notes TEXT,
+  plan_id TEXT,
+  plan_name TEXT,
+  start_date TEXT,
+  end_date TEXT,
+  payer_member_id TEXT,
+  payer_member_name TEXT,
+  covered_member_ids TEXT,
   created_at TEXT NOT NULL,
   FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
   FOREIGN KEY (location_id) REFERENCES locations(id) ON DELETE CASCADE
@@ -148,3 +169,4 @@ CREATE INDEX IF NOT EXISTS idx_check_ins_location ON check_ins(location_id, chec
 CREATE INDEX IF NOT EXISTS idx_payments_member ON payments(member_id, due_date DESC);
 CREATE INDEX IF NOT EXISTS idx_payments_location ON payments(location_id, status);
 `;
+

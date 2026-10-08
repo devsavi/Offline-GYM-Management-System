@@ -60,6 +60,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({
   const renderMemberItem = ({ item }: { item: Member }) => {
     const isPaid = item.latest_payment_status === 'paid';
     const isPending = item.latest_payment_status === 'pending';
+    const isUnpaid = item.latest_payment_status === 'unpaid';
     const itemDisplayName = item.title && !item.name.toLowerCase().startsWith(item.title.toLowerCase())
       ? `${item.title} ${item.name}`
       : item.name;
@@ -114,7 +115,9 @@ export const MembersTab: React.FC<MembersTabProps> = ({
                     ? colors.successSoft
                     : isPending
                     ? colors.warningSoft
-                    : colors.dangerSoft,
+                    : isUnpaid
+                    ? colors.dangerSoft
+                    : '#F1F5F9',
                 },
               ]}
             >
@@ -126,11 +129,13 @@ export const MembersTab: React.FC<MembersTabProps> = ({
                       ? colors.success
                       : isPending
                       ? colors.warning
-                      : colors.danger,
+                      : isUnpaid
+                      ? colors.danger
+                      : colors.textMuted,
                   },
                 ]}
               >
-                {isPaid ? 'Fees Paid' : isPending ? 'Due Soon' : 'Fee Unpaid'}
+                {isPaid ? 'Fees Paid' : isPending ? 'Due Soon' : isUnpaid ? 'Fee Unpaid' : 'No Plan'}
               </Text>
             </View>
 

@@ -81,3 +81,57 @@ export const DEFAULT_EXERCISES: Omit<Exercise, 'is_custom'>[] = [
   { id: 'ex_fa_3', name: "Farmer's Walk Carry", category: 'Forearms', description: 'Heavy grip endurance and isometric forearm tension walking with heavy weights.' },
   { id: 'ex_fa_4', name: 'Wrist Roller Extensions', category: 'Forearms', description: 'Continuous dynamic winding movement building forearm burn and tendon strength.' },
 ];
+
+export const DEFAULT_PAYMENT_PLANS = [
+  {
+    id: 'plan_monthly',
+    name: 'Monthly Plan',
+    amount: 2500,
+    currency: 'LKR',
+    duration_value: 1,
+    duration_unit: 'months' as const,
+    member_limit: 1,
+    description: 'Standard monthly gym membership with full equipment access.',
+  },
+  {
+    id: 'plan_3months',
+    name: 'Three Month Plan',
+    amount: 4500,
+    currency: 'LKR',
+    duration_value: 3,
+    duration_unit: 'months' as const,
+    member_limit: 1,
+    description: 'Quarterly membership package with discounted rate.',
+  },
+  {
+    id: 'plan_family_2',
+    name: 'Family Plan (2 Members)',
+    amount: 4000,
+    currency: 'LKR',
+    duration_value: 1,
+    duration_unit: 'months' as const,
+    member_limit: 2,
+    description: 'Covers 2 family members under a single package for 1 month.',
+  },
+  {
+    id: 'plan_family_5',
+    name: 'Family Plan (5 Members)',
+    amount: 10000,
+    currency: 'LKR',
+    duration_value: 1,
+    duration_unit: 'months' as const,
+    member_limit: 5,
+    description: 'Covers up to 5 family members under a single package for 1 month.',
+  },
+  {
+    id: 'plan_1year',
+    name: 'One Year Plan',
+    amount: 20000,
+    currency: 'LKR',
+    duration_value: 1,
+    duration_unit: 'years' as const,
+    member_limit: 1,
+    description: 'Full 1-year annual membership with maximum savings.',
+  },
+];
+

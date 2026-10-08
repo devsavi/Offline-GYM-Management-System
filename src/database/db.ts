@@ -51,6 +51,37 @@ export async function initDatabase(): Promise<void> {
     await db.runAsync('ALTER TABLE members ADD COLUMN title TEXT;');
   } catch {}
 
+  // Safe migrations for payments table
+  try {
+    await db.runAsync('ALTER TABLE payments ADD COLUMN plan_id TEXT;');
+  } catch {}
+  try {
+    await db.runAsync('ALTER TABLE payments ADD COLUMN plan_name TEXT;');
+  } catch {}
+  try {
+    await db.runAsync('ALTER TABLE payments ADD COLUMN start_date TEXT;');
+  } catch {}
+  try {
+    await db.runAsync('ALTER TABLE payments ADD COLUMN end_date TEXT;');
+  } catch {}
+  try {
+    await db.runAsync('ALTER TABLE payments ADD COLUMN payer_member_id TEXT;');
+  } catch {}
+  try {
+    await db.runAsync('ALTER TABLE payments ADD COLUMN payer_member_name TEXT;');
+  } catch {}
+  try {
+    await db.runAsync('ALTER TABLE payments ADD COLUMN covered_member_ids TEXT;');
+  } catch {}
+
+  // Safe index creation on migrated columns
+  try {
+    await db.runAsync('CREATE INDEX IF NOT EXISTS idx_payments_plan ON payments(plan_id);');
+  } catch {}
+  try {
+    await db.runAsync('CREATE INDEX IF NOT EXISTS idx_payments_payer ON payments(payer_member_id);');
+  } catch {}
+
   // 3. Seed Pre-populated Exercises Dictionary atomically
   try {
     const existing = await db.getFirstAsync<{ count: number }>(
@@ -75,6 +106,13 @@ export async function initDatabase(): Promise<void> {
   } catch (seedErr) {
     console.error('[SQLite] Exercise seeding warning:', seedErr);
   }
+
+  // Clean up any previously auto-seeded default plans so payment plans start empty
+  try {
+    await db.runAsync(
+      `DELETE FROM payment_plans WHERE id IN ('plan_monthly', 'plan_3months', 'plan_family_2', 'plan_family_5', 'plan_1year');`
+    );
+  } catch {}
 
   console.log('[SQLite] Offline database fully initialized.');
 }
@@ -115,6 +153,7 @@ export async function clearAllDatabaseData(): Promise<void> {
     await db.execAsync(`
       DELETE FROM check_ins;
       DELETE FROM payments;
+      DELETE FROM payment_plans;
       DELETE FROM plan_exercises;
       DELETE FROM workout_plans;
       DELETE FROM measurements;
@@ -128,3 +167,4 @@ export async function clearAllDatabaseData(): Promise<void> {
     console.error('[SQLite] Error clearing database:', e);
   }
 }
+

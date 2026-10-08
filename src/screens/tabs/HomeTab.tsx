@@ -168,6 +168,10 @@ export const HomeTab: React.FC<HomeTabProps> = ({
       {recentMembers.length > 0 ? (
         recentMembers.map((item) => {
           const isPaid = item.latest_payment_status === 'paid';
+          const isPending = item.latest_payment_status === 'pending';
+          const isUnpaid = item.latest_payment_status === 'unpaid';
+          const statusText = isPaid ? 'Fees Paid' : isPending ? 'Due Soon' : isUnpaid ? 'Fee Due' : 'No Plan';
+          const statusColor = isPaid ? colors.success : isPending ? '#D97706' : isUnpaid ? '#EF4444' : colors.textMuted;
           return (
             <TouchableOpacity
               key={item.id}
@@ -185,8 +189,8 @@ export const HomeTab: React.FC<HomeTabProps> = ({
                 <Text style={styles.recentMemberName}>{item.name}</Text>
                 <Text style={styles.recentMemberMeta}>
                   {item.phone || item.email || 'No phone'} •{' '}
-                  <Text style={{ color: isPaid ? colors.success : '#EF4444', fontWeight: '600' }}>
-                    {isPaid ? 'Fees Paid' : 'Fee Due'}
+                  <Text style={{ color: statusColor, fontWeight: '600' }}>
+                    {statusText}
                   </Text>
                 </Text>
               </View>

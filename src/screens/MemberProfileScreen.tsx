@@ -24,6 +24,7 @@ import { measurementService } from '../database/services/measurementService';
 import { workoutService } from '../database/services/workoutService';
 import { paymentService } from '../database/services/paymentService';
 import { checkInService } from '../database/services/checkInService';
+import { planService } from '../database/services/planService';
 import { exportWorkoutPlanPDF } from '../utils/pdfExport';
 import { addWorkoutPlanToCalendar } from '../utils/calendar';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -33,6 +34,7 @@ import {
   Measurement,
   WorkoutPlan,
   Payment,
+  PaymentPlan,
   CheckIn,
   CustomMeasurementField,
 } from '../types';
@@ -113,7 +115,7 @@ type TabType = 'info' | 'progress' | 'workouts' | 'payments' | 'visits';
 export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
   const { memberId } = route.params;
-  const { selectedLocation, refreshDashboard } = useGymStore();
+  const { selectedLocation, refreshDashboard, paymentPlans, setOpenProfileOnTab } = useGymStore();
 
   const [activeTab, setActiveTab] = useState<TabType>('info');
   const [member, setMember] = useState<Member | null>(null);
@@ -165,11 +167,17 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
   const [inlineFieldName, setInlineFieldName] = useState('');
   const [inlineFieldUnit, setInlineFieldUnit] = useState('cm');
 
-  // New Payment Modal State
+  // New Payment / Plan Assignment Modal State
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [payAmount, setPayAmount] = useState('');
-  const [payPeriodLabel, setPayPeriodLabel] = useState('');
-  const [payType, setPayType] = useState<'monthly' | 'yearly'>('monthly');
+  const [selectedPlan, setSelectedPlan] = useState<PaymentPlan | null>(null);
+  const [payStartDate, setPayStartDate] = useState('');
+  const [payEndDate, setPayEndDate] = useState('');
+  const [payStatus, setPayStatus] = useState<'paid' | 'unpaid'>('paid');
+  const [payNotes, setPayNotes] = useState('');
+  // Family / group plan: covered members list
+  const [coveredMemberIds, setCoveredMemberIds] = useState<string[]>([]);
+  const [allMembers, setAllMembers] = useState<Member[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
 
   useEffect(() => {
     loadAllMemberData();
@@ -427,38 +435,176 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
-  const handleCreatePayment = async () => {
-    const amountNum = parseFloat(payAmount);
-    if (!selectedLocation || isNaN(amountNum) || amountNum <= 0 || !payPeriodLabel.trim()) {
-      Alert.alert('Invalid Details', 'Please provide valid amount and period label (e.g. October 2026).');
+  const resetPaymentModal = () => {
+    setShowPaymentModal(false);
+    setSelectedPlan(null);
+    setPayStartDate('');
+    setPayEndDate('');
+    setPayStatus('paid');
+    setPayNotes('');
+    setCoveredMemberIds([]);
+  };
+
+  // Auto-compute end date from plan duration when plan or start date changes
+  const computeEndDate = (plan: PaymentPlan, startDateStr: string): string => {
+    if (!startDateStr) return '';
+    const parts = startDateStr.split('-');
+    if (parts.length !== 3) return '';
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const start = new Date(year, month, day);
+    if (isNaN(start.getTime())) return '';
+    const end = new Date(year, month, day);
+    switch (plan.duration_unit) {
+      case 'days': end.setDate(end.getDate() + plan.duration_value); break;
+      case 'weeks': end.setDate(end.getDate() + plan.duration_value * 7); break;
+      case 'months': end.setMonth(end.getMonth() + plan.duration_value); break;
+      case 'years': end.setFullYear(end.getFullYear() + plan.duration_value); break;
+    }
+    end.setDate(end.getDate() - 1); // end is inclusive last day
+    const y = end.getFullYear();
+    const m = String(end.getMonth() + 1).padStart(2, '0');
+    const d = String(end.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const handleStartDateChange = (val: string) => {
+    setPayStartDate(val);
+    if (selectedPlan && val.trim().length === 10) {
+      const computed = computeEndDate(selectedPlan, val.trim());
+      if (computed) setPayEndDate(computed);
+    }
+  };
+
+  const handleToggleCoveredMember = (mId: string) => {
+    if (!selectedPlan) return;
+    const maxAdditional = Math.max(0, selectedPlan.member_limit - 1);
+    if (coveredMemberIds.includes(mId)) {
+      setCoveredMemberIds(coveredMemberIds.filter((id) => id !== mId));
+    } else {
+      if (coveredMemberIds.length >= maxAdditional) {
+        Alert.alert(
+          'Limit Reached',
+          `This plan allows up to ${maxAdditional} additional family member${maxAdditional > 1 ? 's' : ''}.`
+        );
+        return;
+      }
+      setCoveredMemberIds([...coveredMemberIds, mId]);
+    }
+  };
+
+  const handleSelectPlan = (plan: PaymentPlan) => {
+    setSelectedPlan(plan);
+    const today = new Date().toISOString().split('T')[0];
+    setPayStartDate(today);
+    setPayEndDate(computeEndDate(plan, today));
+    setCoveredMemberIds([]);
+    // Load members of same location if plan allows > 1 member
+    if (plan.member_limit > 1 && selectedLocation) {
+      setLoadingMembers(true);
+      memberService
+        .getMembersByLocation(selectedLocation.id)
+        .then((mems) => {
+          setAllMembers(mems.filter((m) => m.id !== memberId));
+          setLoadingMembers(false);
+        })
+        .catch(() => {
+          setLoadingMembers(false);
+        });
+    }
+  };
+
+  const handleAssignPlan = async () => {
+    if (!selectedPlan || !selectedLocation || !member) {
+      Alert.alert('Missing Info', 'Please select a payment plan first.');
+      return;
+    }
+    if (!payStartDate || !payEndDate) {
+      Alert.alert('Missing Dates', 'Please provide start and end dates.');
       return;
     }
 
+    const coveredMembers = allMembers.filter((m) => coveredMemberIds.includes(m.id));
+
     try {
-      await paymentService.createPayment({
-        member_id: memberId,
-        location_id: selectedLocation.id,
-        amount: amountNum,
-        currency: 'USD',
-        period_type: payType,
-        period_label: payPeriodLabel.trim(),
-        due_date: new Date().toISOString().split('T')[0],
-        status: 'unpaid',
+      await paymentService.assignPlanToMember({
+        memberId,
+        locationId: selectedLocation.id,
+        planId: selectedPlan.id,
+        planName: selectedPlan.name,
+        amount: selectedPlan.amount,
+        currency: selectedPlan.currency,
+        startDate: payStartDate,
+        endDate: payEndDate,
+        periodType: 'custom',
+        status: payStatus,
+        notes: payNotes,
+        primaryMemberName: member.name,
+        coveredMembers,
       });
-      setShowPaymentModal(false);
-      setPayAmount('');
-      setPayPeriodLabel('');
+      resetPaymentModal();
       loadAllMemberData();
+      refreshDashboard();
+      Alert.alert('Success ✅', `"${selectedPlan.name}" has been assigned to ${member.name}.`);
     } catch (e: any) {
       Alert.alert('Error', e.message);
     }
   };
 
-  const handleTogglePaymentStatus = async (payment: Payment) => {
+  const handleTogglePaymentStatus = (payment: Payment) => {
     const nextStatus = payment.status === 'paid' ? 'unpaid' : 'paid';
-    await paymentService.updateStatus(payment.id, nextStatus, 'Cash');
-    loadAllMemberData();
+    Alert.alert(
+      nextStatus === 'paid' ? 'Mark as Paid?' : 'Mark as Unpaid?',
+      nextStatus === 'paid'
+        ? `Confirm payment received for "${payment.plan_name || payment.period_label || 'this plan'}"?`
+        : `Mark "${payment.plan_name || payment.period_label || 'this plan'}" as unpaid / pending fee?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: nextStatus === 'paid' ? 'Mark Paid' : 'Mark Unpaid',
+          style: nextStatus === 'paid' ? 'default' : 'destructive',
+          onPress: async () => {
+            // Optimistic update — flip status in local state immediately (no blink)
+            setPayments((prev) =>
+              prev.map((p) => (p.id === payment.id ? { ...p, status: nextStatus } : p))
+            );
+            // Persist silently in background
+            try {
+              await paymentService.updateStatus(payment.id, nextStatus, 'Cash');
+              refreshDashboard();
+            } catch {
+              // Revert on failure
+              setPayments((prev) =>
+                prev.map((p) => (p.id === payment.id ? { ...p, status: payment.status } : p))
+              );
+            }
+          },
+        },
+      ]
+    );
   };
+
+  const handleDeletePayment = async (payment: Payment) => {
+    Alert.alert(
+      'Delete Payment Record',
+      `Remove this "${payment.plan_name || payment.period_label}" payment record?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await paymentService.deletePayment(payment.id);
+            loadAllMemberData();
+            refreshDashboard();
+          },
+        },
+      ]
+    );
+  };
+
+
 
   const handleExportPDF = async (plan: WorkoutPlan) => {
     if (!member) return;
@@ -1297,68 +1443,227 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           )}
 
-          {/* ════ TAB 4: PAYMENTS (KEPT FUNCTIONAL & CLEAN) ════ */}
+          {/* ════ TAB 4: PAYMENTS & MEMBERSHIP PLANS ════ */}
           {activeTab === 'payments' && (
             <View style={styles.tabContent}>
               <View style={styles.actionHeaderRow}>
-                <Text style={styles.sectionHeading}>Billing & Dues</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.sectionHeading}>Membership & Billing</Text>
+                  <Text style={styles.sectionSubheading}>
+                    Manage active plans, dues, and payment records
+                  </Text>
+                </View>
                 <TouchableOpacity
                   style={styles.actionBtnPrimary}
-                  onPress={() => setShowPaymentModal(true)}
+                  onPress={() => {
+                    resetPaymentModal();
+                    setShowPaymentModal(true);
+                  }}
                   activeOpacity={0.8}
                 >
                   <Ionicons name="card-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.actionBtnPrimaryText}>Create Fee Due</Text>
+                  <Text style={styles.actionBtnPrimaryText}>Assign Plan</Text>
                 </TouchableOpacity>
               </View>
 
-              {payments.length === 0 ? (
-                <View style={styles.emptyCard}>
-                  <Ionicons name="wallet-outline" size={40} color={colors.textMuted} />
-                  <Text style={styles.emptyTitle}>No payment records</Text>
-                  <Text style={styles.emptySubtitle}>
-                    Track monthly or annual membership dues and payment statuses.
-                  </Text>
-                </View>
-              ) : (
-                payments.map((p) => {
-                  const isPaid = p.status === 'paid';
+              {/* Active Plan Card (if any paid plan covers today or latest is paid) */}
+              {(() => {
+                const todayStr = new Date().toISOString().split('T')[0];
+                const activePayment =
+                  payments.find(
+                    (p) =>
+                      p.status === 'paid' &&
+                      p.start_date &&
+                      p.end_date &&
+                      todayStr >= p.start_date &&
+                      todayStr <= p.end_date
+                  ) || payments.find((p) => p.status === 'paid');
+
+                if (activePayment) {
+                  const isCoveredByOther =
+                    activePayment.payer_member_name &&
+                    activePayment.payer_member_id &&
+                    activePayment.payer_member_id !== memberId;
+
                   return (
-                    <View key={p.id} style={styles.flatPaymentRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.paymentLabel}>{p.period_label}</Text>
-                        <Text style={styles.paymentAmount}>
-                          ${p.amount.toFixed(2)} {p.currency} ({p.period_type})
+                    <View style={styles.activePlanBanner}>
+                      <View style={styles.activePlanHeaderRow}>
+                        <View style={styles.activePlanBadge}>
+                          <Ionicons name="shield-checkmark" size={13} color={colors.primary} />
+                          <Text style={styles.activePlanBadgeText}>ACTIVE MEMBERSHIP</Text>
+                        </View>
+                        <Text style={styles.activePlanPrice}>
+                          {activePayment.currency} {activePayment.amount.toLocaleString()}
                         </Text>
-                        <Text style={styles.paymentDueText}>Due: {p.due_date}</Text>
                       </View>
 
-                      <TouchableOpacity
-                        style={[
-                          styles.paymentStatusToggle,
-                          { backgroundColor: isPaid ? colors.successSoft : colors.dangerSoft },
-                        ]}
-                        onPress={() => handleTogglePaymentStatus(p)}
-                        activeOpacity={0.8}
-                      >
-                        <Ionicons
-                          name={isPaid ? 'checkmark-circle' : 'close-circle'}
-                          size={18}
-                          color={isPaid ? colors.success : colors.danger}
-                        />
-                        <Text
-                          style={[
-                            styles.paymentStatusToggleText,
-                            { color: isPaid ? colors.success : colors.danger },
-                          ]}
-                        >
-                          {isPaid ? 'Paid' : 'Unpaid'}
-                        </Text>
-                      </TouchableOpacity>
+                      <Text style={styles.activePlanName}>
+                        {activePayment.plan_name || activePayment.period_label || 'Standard Membership'}
+                      </Text>
+
+                      {/* Clear Start and End Dates */}
+                      <View style={styles.activePlanDateBox}>
+                        <View style={styles.dateCol}>
+                          <Text style={styles.dateColLabel}>START DATE</Text>
+                          <Text style={styles.dateColValue}>
+                            {activePayment.start_date || activePayment.created_at?.split('T')[0] || '—'}
+                          </Text>
+                        </View>
+                        <Ionicons name="arrow-forward" size={14} color={colors.primary} style={{ marginTop: 12 }} />
+                        <View style={styles.dateCol}>
+                          <Text style={styles.dateColLabel}>END DATE / DUE</Text>
+                          <Text style={[styles.dateColValue, { color: colors.primary, fontWeight: '800' }]}>
+                            {activePayment.end_date || activePayment.due_date || '—'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Family plan badge if covered by other or covers others */}
+                      {isCoveredByOther && (
+                        <View style={styles.familyInfoBox}>
+                          <Ionicons name="people" size={14} color="#15803D" />
+                          <Text style={styles.familyInfoText}>
+                            Family Package • Activated & covered by{' '}
+                            <Text style={{ fontWeight: '700' }}>{activePayment.payer_member_name}</Text>
+                          </Text>
+                        </View>
+                      )}
+
+                      {!isCoveredByOther && activePayment.notes?.includes('Covers') && (
+                        <View style={styles.familyInfoBox}>
+                          <Ionicons name="people" size={14} color="#15803D" />
+                          <Text style={styles.familyInfoText}>{activePayment.notes}</Text>
+                        </View>
+                      )}
                     </View>
                   );
-                })
-              )}
+                }
+
+                // If no active paid plan
+                const hasUnpaid = payments.some((p) => p.status === 'unpaid');
+                return (
+                  <View style={styles.noActivePlanBanner}>
+                    <Ionicons
+                      name={hasUnpaid ? 'alert-circle-outline' : 'information-circle-outline'}
+                      size={24}
+                      color={hasUnpaid ? '#DC2626' : colors.textMuted}
+                    />
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={styles.noActivePlanTitle}>
+                        {hasUnpaid ? 'Payment Pending' : 'No Active Membership Plan'}
+                      </Text>
+                      <Text style={styles.noActivePlanDesc}>
+                        {hasUnpaid
+                          ? 'This member has an unpaid fee. Update status once collected.'
+                          : 'Assign a custom plan (Monthly, Family, Annual) to start membership.'}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })()}
+
+              {/* Payment Records History */}
+              <View style={{ marginTop: 20 }}>
+                <Text style={styles.sectionHeading}>
+                  Billing History ({payments.length})
+                </Text>
+
+                {payments.length === 0 ? (
+                  <View style={styles.emptyCard}>
+                    <Ionicons name="wallet-outline" size={40} color={colors.textMuted} />
+                    <Text style={styles.emptyTitle}>No payment records</Text>
+                    <Text style={styles.emptySubtitle}>
+                      Assign a membership plan above to track fees, payment dates, and active status.
+                    </Text>
+                  </View>
+                ) : (
+                  payments.map((p) => {
+                    const isPaid = p.status === 'paid';
+                    const isCovered =
+                      p.payer_member_name &&
+                      p.payer_member_id &&
+                      p.payer_member_id !== memberId;
+
+                    return (
+                      <View key={p.id} style={styles.paymentCard}>
+                        <View style={styles.paymentCardHeader}>
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <Text style={styles.paymentCardTitle}>
+                                {p.plan_name || p.period_label || 'Membership Plan'}
+                              </Text>
+                              {isCovered && (
+                                <View style={styles.coveredByTag}>
+                                  <Ionicons name="people" size={10} color="#15803D" />
+                                  <Text style={styles.coveredByTagText}>Family</Text>
+                                </View>
+                              )}
+                            </View>
+
+                            <Text style={styles.paymentCardAmount}>
+                              {p.currency} {p.amount.toLocaleString()}
+                              {p.amount === 0 && isCovered ? ' (Covered by primary)' : ''}
+                            </Text>
+                          </View>
+
+                          <TouchableOpacity
+                            style={[
+                              styles.paymentStatusToggle,
+                              { backgroundColor: isPaid ? colors.successSoft : colors.dangerSoft },
+                            ]}
+                            onPress={() => handleTogglePaymentStatus(p)}
+                            activeOpacity={0.8}
+                          >
+                            <Ionicons
+                              name={isPaid ? 'checkmark-circle' : 'close-circle'}
+                              size={16}
+                              color={isPaid ? colors.success : colors.danger}
+                            />
+                            <Text
+                              style={[
+                                styles.paymentStatusToggleText,
+                                { color: isPaid ? colors.success : colors.danger },
+                              ]}
+                            >
+                              {isPaid ? 'Paid' : 'Unpaid'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+
+                        {/* Dates info row */}
+                        <View style={styles.paymentCardDatesRow}>
+                          <View style={styles.dateBadge}>
+                            <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
+                            <Text style={styles.dateBadgeText}>
+                              {p.start_date && p.end_date
+                                ? `${p.start_date} → ${p.end_date}`
+                                : `Due: ${p.due_date}`}
+                            </Text>
+                          </View>
+
+                          <TouchableOpacity
+                            onPress={() => handleDeletePayment(p)}
+                            style={styles.deletePaymentBtn}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name="trash-outline" size={15} color="#DC2626" />
+                          </TouchableOpacity>
+                        </View>
+
+                        {isCovered && (
+                          <Text style={styles.paymentPayerText}>
+                            Covered under family plan by: <Text style={{ fontWeight: '700' }}>{p.payer_member_name}</Text>
+                          </Text>
+                        )}
+
+                        {p.notes && !isCovered && (
+                          <Text style={styles.paymentCardNotes}>{p.notes}</Text>
+                        )}
+                      </View>
+                    );
+                  })
+                )}
+              </View>
             </View>
           )}
 
@@ -1673,64 +1978,291 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
         </View>
       </Modal>
 
-      {/* ── MODAL: Add Payment Due ── */}
-      <Modal visible={showPaymentModal} animationType="fade" transparent>
+      {/* ── MODAL: Assign Payment Plan ── */}
+      <Modal visible={showPaymentModal} animationType="slide" transparent>
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalBox}>
+          <View style={[styles.modalBox, { maxHeight: '90%' }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Create Fee Due</Text>
-              <TouchableOpacity onPress={() => setShowPaymentModal(false)} activeOpacity={0.8}>
-                <Ionicons name="close" size={22} color={colors.textPrimary} />
+              <View>
+                <Text style={styles.modalTitle}>Assign Payment Plan</Text>
+                <Text style={styles.modalSubtitle}>For {member?.name || 'Member'}</Text>
+              </View>
+              <TouchableOpacity onPress={resetPaymentModal} activeOpacity={0.8}>
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.inputLabel}>Amount ($)</Text>
-            <View style={styles.inputWrap}>
-              <TextInput
-                style={styles.textInput}
-                placeholder="50"
-                placeholderTextColor={PLACEHOLDER_COLOR}
-                keyboardType="numeric"
-                value={payAmount}
-                onChangeText={setPayAmount}
-              />
-            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+              {/* Step 1: Select Plan */}
+              <Text style={styles.modalSectionTitle}>1. Choose Payment Plan</Text>
 
-            <Text style={styles.inputLabel}>Period Label (e.g. November 2026, Annual 2026)</Text>
-            <View style={styles.inputWrap}>
-              <TextInput
-                style={styles.textInput}
-                placeholder="e.g. November 2026"
-                placeholderTextColor={PLACEHOLDER_COLOR}
-                value={payPeriodLabel}
-                onChangeText={setPayPeriodLabel}
-              />
-            </View>
+              {paymentPlans.length === 0 ? (
+                <View style={styles.noPlansEmptyState}>
+                  <Ionicons name="card-outline" size={40} color={colors.textMuted} />
+                  <Text style={styles.noPlansEmptyTitle}>No Payment Plans Yet</Text>
+                  <Text style={styles.noPlansEmptySubtitle}>
+                    Create membership packages (Monthly, Family, Annual, etc.) in the User Profile before assigning them to members.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.goToPaymentsBtn}
+                    onPress={() => {
+                      resetPaymentModal();
+                      setOpenProfileOnTab('payments');
+                      navigation.goBack();
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.goToPaymentsBtnText}>Add Plan</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.planSelectorRow}
+                >
+                  {paymentPlans
+                    .filter((p) => p.is_active)
+                    .map((plan) => {
+                      const isSelected = selectedPlan?.id === plan.id;
+                      return (
+                        <TouchableOpacity
+                          key={plan.id}
+                          style={[
+                            styles.planChoiceCard,
+                            isSelected && styles.planChoiceCardActive,
+                          ]}
+                          onPress={() => handleSelectPlan(plan)}
+                          activeOpacity={0.85}
+                        >
+                          <View style={styles.planChoiceHeader}>
+                            <Text
+                              style={[
+                                styles.planChoiceName,
+                                isSelected && styles.planChoiceNameActive,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {plan.name}
+                            </Text>
+                            {isSelected && (
+                              <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
+                            )}
+                          </View>
 
-            <View style={{ flexDirection: 'row', gap: 10, marginVertical: 12 }}>
+                          <Text
+                            style={[
+                              styles.planChoiceAmount,
+                              isSelected && styles.planChoiceAmountActive,
+                            ]}
+                          >
+                            {plan.currency} {plan.amount.toLocaleString()}
+                          </Text>
+
+                          <Text style={styles.planChoiceDuration}>
+                            ⏱ {plan.duration_value} {plan.duration_unit}
+                          </Text>
+
+                          {plan.member_limit > 1 && (
+                            <View style={styles.planChoiceFamilyBadge}>
+                              <Text style={styles.planChoiceFamilyText}>
+                                👨‍👩‍👧 {plan.member_limit} Members
+                              </Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                </ScrollView>
+              )}
+
+              {/* Step 2: Dates (Start & End Dates clearly shown) */}
+              {selectedPlan && (
+                <>
+                  <Text style={[styles.modalSectionTitle, { marginTop: 18 }]}>
+                    2. Plan Dates & Schedule
+                  </Text>
+
+                  <View style={styles.datesInputRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Start Date (YYYY-MM-DD)</Text>
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          style={styles.textInput}
+                          placeholder="2026-10-08"
+                          placeholderTextColor={PLACEHOLDER_COLOR}
+                          value={payStartDate}
+                          onChangeText={handleStartDateChange}
+                        />
+                      </View>
+                    </View>
+
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>End Date (YYYY-MM-DD)</Text>
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          style={styles.textInput}
+                          placeholder="2026-11-07"
+                          placeholderTextColor={PLACEHOLDER_COLOR}
+                          value={payEndDate}
+                          onChangeText={setPayEndDate}
+                        />
+                      </View>
+                    </View>
+                  </View>
+
+                  <Text style={styles.dateHelperHint}>
+                    Auto-calculated: {selectedPlan.duration_value} {selectedPlan.duration_unit} duration from start date
+                  </Text>
+
+                  {/* Step 3: Family Package - Covered Members */}
+                  {selectedPlan.member_limit > 1 && (
+                    <View style={{ marginTop: 18 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={styles.modalSectionTitle}>
+                          3. Covered Family Members
+                        </Text>
+                        <Text style={styles.familyCountBadge}>
+                          {coveredMemberIds.length} / {selectedPlan.member_limit - 1} added
+                        </Text>
+                      </View>
+                      <Text style={styles.fieldSubhint}>
+                        Select up to {selectedPlan.member_limit - 1} additional members. They will automatically be marked active/covered under this plan.
+                      </Text>
+
+                      {loadingMembers ? (
+                        <ActivityIndicator color={colors.primary} style={{ marginVertical: 14 }} />
+                      ) : allMembers.length === 0 ? (
+                        <Text style={styles.noFamilyMembersText}>
+                          No other registered members found at this location to add.
+                        </Text>
+                      ) : (
+                        <ScrollView style={styles.membersCheckboxList} nestedScrollEnabled>
+                          {allMembers.map((m) => {
+                            const isSelected = coveredMemberIds.includes(m.id);
+                            return (
+                              <TouchableOpacity
+                                key={m.id}
+                                style={[
+                                  styles.familyMemberSelectRow,
+                                  isSelected && styles.familyMemberSelectRowActive,
+                                ]}
+                                onPress={() => handleToggleCoveredMember(m.id)}
+                                activeOpacity={0.8}
+                              >
+                                <Ionicons
+                                  name={isSelected ? 'checkbox' : 'square-outline'}
+                                  size={20}
+                                  color={isSelected ? colors.primary : colors.textMuted}
+                                />
+                                <View style={{ flex: 1, marginLeft: 10 }}>
+                                  <Text
+                                    style={[
+                                      styles.familyMemberSelectName,
+                                      isSelected && { color: colors.primary, fontWeight: '800' },
+                                    ]}
+                                  >
+                                    {m.name}
+                                  </Text>
+                                  <Text style={styles.familyMemberSelectPhone}>
+                                    {m.phone || m.email || 'No contact'}
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+                      )}
+                    </View>
+                  )}
+
+                  {/* Step 4: Payment Status */}
+                  <Text style={[styles.modalSectionTitle, { marginTop: 18 }]}>
+                    Payment Status
+                  </Text>
+                  <View style={styles.payStatusToggleRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.payStatusToggleBtn,
+                        payStatus === 'paid' && styles.payStatusToggleBtnPaidActive,
+                      ]}
+                      onPress={() => setPayStatus('paid')}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={16}
+                        color={payStatus === 'paid' ? '#FFFFFF' : colors.primary}
+                      />
+                      <Text
+                        style={[
+                          styles.payStatusToggleBtnText,
+                          payStatus === 'paid' && styles.payStatusToggleBtnTextActive,
+                        ]}
+                      >
+                        Paid (Immediate Active)
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.payStatusToggleBtn,
+                        payStatus === 'unpaid' && styles.payStatusToggleBtnUnpaidActive,
+                      ]}
+                      onPress={() => setPayStatus('unpaid')}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons
+                        name="time-outline"
+                        size={16}
+                        color={payStatus === 'unpaid' ? '#FFFFFF' : colors.primary}
+                      />
+                      <Text
+                        style={[
+                          styles.payStatusToggleBtnText,
+                          payStatus === 'unpaid' && styles.payStatusToggleBtnTextActive,
+                        ]}
+                      >
+                        Unpaid (Pending Fee)
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Notes */}
+                  <Text style={[styles.inputLabel, { marginTop: 14 }]}>
+                    Notes / Remarks (Optional)
+                  </Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. Paid in cash at front desk"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      value={payNotes}
+                      onChangeText={setPayNotes}
+                    />
+                  </View>
+
+                  {/* Assign Button */}
+                  <TouchableOpacity
+                    style={[styles.saveActionBtn, { marginTop: 20 }]}
+                    onPress={handleAssignPlan}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.saveActionBtnText}>
+                      ASSIGN {selectedPlan.name.toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
               <TouchableOpacity
-                style={[styles.payTypeBtn, payType === 'monthly' && styles.payTypeBtnActive]}
-                onPress={() => setPayType('monthly')}
+                style={styles.modalCancelBtn}
+                onPress={resetPaymentModal}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.payTypeBtnText, payType === 'monthly' && styles.payTypeBtnTextActive]}>
-                  Monthly
-                </Text>
+                <Text style={styles.modalCancelBtnText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.payTypeBtn, payType === 'yearly' && styles.payTypeBtnActive]}
-                onPress={() => setPayType('yearly')}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.payTypeBtnText, payType === 'yearly' && styles.payTypeBtnTextActive]}>
-                  Yearly
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity style={styles.saveActionBtn} onPress={handleCreatePayment} activeOpacity={0.85}>
-              <Text style={styles.saveActionBtnText}>ADD MEMBERSHIP DUE</Text>
-            </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -2773,28 +3305,181 @@ const styles = StyleSheet.create({
   },
 
   // ── Payments Tab ──
-  flatPaymentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  paymentLabel: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textPrimary,
-  },
-  paymentAmount: {
-    fontSize: 13,
+  sectionSubheading: {
+    fontSize: 12,
     color: colors.textSecondary,
     marginTop: 2,
   },
-  paymentDueText: {
+  activePlanBanner: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1.5,
+    borderColor: '#86EFAC',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  activePlanHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  activePlanBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: colors.mintSoft,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  activePlanBadgeText: {
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  activePlanPrice: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  activePlanName: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: 10,
+  },
+  activePlanDateBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+    gap: 12,
+  },
+  dateCol: {
+    flex: 1,
+  },
+  dateColLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  dateColValue: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  familyInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#DCFCE7',
+  },
+  familyInfoText: {
+    fontSize: 12,
+    color: '#15803D',
+    flex: 1,
+  },
+  noActivePlanBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 16,
+  },
+  noActivePlanTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  noActivePlanDesc: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  paymentCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 10,
+  },
+  paymentCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  paymentCardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  coveredByTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  coveredByTagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  paymentCardAmount: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  paymentCardDatesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  dateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  dateBadgeText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  deletePaymentBtn: {
+    padding: 4,
+  },
+  paymentPayerText: {
+    fontSize: 11,
+    color: '#15803D',
+    marginTop: 6,
+  },
+  paymentCardNotes: {
     fontSize: 11,
     color: colors.textMuted,
-    marginTop: 2,
+    fontStyle: 'italic',
+    marginTop: 4,
   },
   paymentStatusToggle: {
     flexDirection: 'row',
@@ -2893,23 +3578,226 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.textPrimary,
   },
-  payTypeBtn: {
+  modalSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  modalSectionTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: 8,
+  },
+  noPlansWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    padding: 12,
+    borderRadius: 12,
+    gap: 8,
+  },
+  noPlansWarningText: {
+    fontSize: 12,
+    color: '#92400E',
     flex: 1,
+  },
+  noPlansEmptyState: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    paddingHorizontal: 16,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    gap: 6,
+  },
+  noPlansEmptyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginTop: 6,
+  },
+  noPlansEmptySubtitle: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 6,
+  },
+  goToPaymentsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 9999,
-    backgroundColor: '#EEF3F0',
+    marginTop: 8,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  goToPaymentsBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  planSelectorRow: {
+    gap: 10,
+    paddingVertical: 4,
+  },
+  planChoiceCard: {
+    width: 150,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+  },
+  planChoiceCardActive: {
+    backgroundColor: '#F0FDF4',
+    borderColor: colors.primary,
+  },
+  planChoiceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 4,
   },
-  payTypeBtnActive: {
-    backgroundColor: colors.primary,
+  planChoiceName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    flex: 1,
   },
-  payTypeBtnText: {
-    fontSize: 14,
+  planChoiceNameActive: {
+    color: colors.primary,
+  },
+  planChoiceAmount: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginTop: 2,
+  },
+  planChoiceAmountActive: {
+    color: colors.primary,
+  },
+  planChoiceDuration: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  planChoiceFamilyBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 6,
+  },
+  planChoiceFamilyText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#15803D',
+  },
+  datesInputRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  dateHelperHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  familyCountBadge: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+    backgroundColor: colors.mintSoft,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 9999,
+  },
+  fieldSubhint: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginBottom: 8,
+  },
+  noFamilyMembersText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    paddingVertical: 8,
+  },
+  membersCheckboxList: {
+    maxHeight: 160,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 6,
+  },
+  familyMemberSelectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    borderRadius: 8,
+  },
+  familyMemberSelectRowActive: {
+    backgroundColor: '#F0FDF4',
+  },
+  familyMemberSelectName: {
+    fontSize: 13,
     fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  familyMemberSelectPhone: {
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+  payStatusToggleRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  payStatusToggleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  payStatusToggleBtnPaidActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  payStatusToggleBtnUnpaidActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  payStatusToggleBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
     color: colors.textSecondary,
   },
-  payTypeBtnTextActive: {
+  payStatusToggleBtnTextActive: {
     color: '#FFFFFF',
-    fontWeight: '700',
+  },
+  modalCancelBtn: {
+    marginTop: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  modalCancelBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
 });

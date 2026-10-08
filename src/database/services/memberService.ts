@@ -16,7 +16,7 @@ export const memberService = {
           SELECT p.status
           FROM payments p
           WHERE p.member_id = m.id
-          ORDER BY p.due_date DESC
+          ORDER BY COALESCE(p.start_date, p.due_date) DESC, p.created_at DESC
           LIMIT 1
         ) as latest_payment_status
       FROM members m
@@ -42,7 +42,7 @@ export const memberService = {
       ...r,
       age: r.age ? Number(r.age) : undefined,
       status: r.status as 'active' | 'inactive',
-      latest_payment_status: r.latest_payment_status || 'unpaid',
+      latest_payment_status: r.latest_payment_status ? (r.latest_payment_status as any) : 'no_plan',
     }));
   },
 
@@ -53,7 +53,7 @@ export const memberService = {
           SELECT p.status
           FROM payments p
           WHERE p.member_id = m.id
-          ORDER BY p.due_date DESC
+          ORDER BY COALESCE(p.start_date, p.due_date) DESC, p.created_at DESC
           LIMIT 1
         ) as latest_payment_status
        FROM members m
@@ -66,7 +66,7 @@ export const memberService = {
       ...row,
       age: row.age ? Number(row.age) : undefined,
       status: row.status as 'active' | 'inactive',
-      latest_payment_status: row.latest_payment_status || 'unpaid',
+      latest_payment_status: row.latest_payment_status ? (row.latest_payment_status as any) : 'no_plan',
     };
   },
 

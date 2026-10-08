@@ -57,7 +57,7 @@ export interface Member {
   photo_uri?: string;
   created_at: string;
   updated_at: string;
-  latest_payment_status?: 'paid' | 'unpaid' | 'pending';
+  latest_payment_status?: PaymentStatus;
 }
 
 export interface CustomMeasurementField {
@@ -134,7 +134,22 @@ export interface CheckIn {
 }
 
 export type PaymentPeriod = 'monthly' | 'yearly' | 'custom';
-export type PaymentStatus = 'paid' | 'unpaid' | 'pending';
+export type PaymentStatus = 'paid' | 'unpaid' | 'pending' | 'no_plan';
+export type PaymentPlanDurationUnit = 'days' | 'weeks' | 'months' | 'years';
+
+export interface PaymentPlan {
+  id: string;
+  name: string;
+  amount: number;
+  currency: string;
+  duration_value: number;
+  duration_unit: PaymentPlanDurationUnit;
+  member_limit: number; // 1 for individual, > 1 for family/group
+  description?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface Payment {
   id: string;
@@ -151,6 +166,14 @@ export interface Payment {
   notes?: string;
   created_at: string;
   member_name?: string;
+  // Plan assignment details
+  plan_id?: string;
+  plan_name?: string;
+  start_date?: string;
+  end_date?: string;
+  payer_member_id?: string;
+  payer_member_name?: string;
+  covered_member_ids?: string;
 }
 
 export interface MemberSummaryStats {
@@ -159,3 +182,4 @@ export interface MemberSummaryStats {
   checkedInToday: number;
   pendingPaymentsCount: number;
 }
+

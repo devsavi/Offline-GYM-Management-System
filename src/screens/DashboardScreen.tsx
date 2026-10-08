@@ -38,11 +38,21 @@ const TAB_ORDER: TabKey[] = ['Home', 'Members', 'Exercises', 'Library'];
 export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const { width: SCREEN_WIDTH } = useWindowDimensions();
-  const { trainer, selectedLocation, refreshDashboard } = useGymStore();
+  const { trainer, selectedLocation, refreshDashboard, openProfileOnTab, setOpenProfileOnTab } = useGymStore();
 
   // Bottom Navigation state
   const [activeTab, setActiveTab] = useState<TabKey>('Home');
   const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [profileInitialCategory, setProfileInitialCategory] = useState<'personal' | 'location' | 'payments' | 'password' | undefined>(undefined);
+
+  // When another screen sets openProfileOnTab, open the modal on that tab
+  useEffect(() => {
+    if (openProfileOnTab) {
+      setProfileInitialCategory(openProfileOnTab);
+      setProfileModalVisible(true);
+      setOpenProfileOnTab(null);
+    }
+  }, [openProfileOnTab]);
 
   // Horizontal page slider animation
   const pageSlideAnim = useRef(new Animated.Value(0)).current;
@@ -180,9 +190,14 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
       {/* Trainer Profile Modal */}
       <TrainerProfileModal
         visible={profileModalVisible}
-        onClose={() => setProfileModalVisible(false)}
+        initialCategory={profileInitialCategory}
+        onClose={() => {
+          setProfileModalVisible(false);
+          setProfileInitialCategory(undefined);
+        }}
         onResetAllData={() => {
           setProfileModalVisible(false);
+          setProfileInitialCategory(undefined);
           navigation.reset({
             index: 0,
             routes: [{ name: 'Onboarding' }],

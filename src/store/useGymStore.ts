@@ -4,10 +4,12 @@ import {
   Location,
   Member,
   MemberSummaryStats,
+  PaymentPlan,
 } from '../types';
 import { trainerService } from '../database/services/trainerService';
 import { locationService } from '../database/services/locationService';
 import { memberService } from '../database/services/memberService';
+import { planService } from '../database/services/planService';
 import { initDatabase, clearAllDatabaseData, queryFirst, runQuery } from '../database/db';
 
 interface GymState {
@@ -20,6 +22,9 @@ interface GymState {
   locations: Location[];
   selectedLocation: Location | null;
 
+  // Custom Payment Plans
+  paymentPlans: PaymentPlan[];
+
   // Members (Scoped to selectedLocation)
   members: Member[];
   isLoadingMembers: boolean;
@@ -29,6 +34,10 @@ interface GymState {
 
   // Error & Feedback
   errorMessage: string | null;
+
+  // Profile deep-link state (set before navigating back to Dashboard)
+  openProfileOnTab: 'payments' | 'location' | null;
+  setOpenProfileOnTab: (tab: 'payments' | 'location' | null) => void;
 
   // Actions
   initialize: () => Promise<void>;
@@ -47,11 +56,17 @@ interface GymState {
   updateLocation: (id: string, name: string, description?: string, address?: string) => Promise<void>;
   deleteLocation: (id: string) => Promise<void>;
 
+  loadPaymentPlans: () => Promise<void>;
+  createPaymentPlan: (data: Omit<PaymentPlan, 'id' | 'created_at' | 'updated_at'>) => Promise<PaymentPlan>;
+  updatePaymentPlan: (id: string, data: Partial<PaymentPlan>) => Promise<void>;
+  deletePaymentPlan: (id: string) => Promise<void>;
+
   loadMembers: () => Promise<void>;
   setSearchQuery: (query: string) => void;
   setStatusFilter: (filter: 'all' | 'active' | 'inactive') => void;
   refreshDashboard: () => Promise<void>;
 }
+
 
 export const useGymStore = create<GymState>((set, get) => ({
   isInitialized: false,
@@ -61,18 +76,23 @@ export const useGymStore = create<GymState>((set, get) => ({
   locations: [],
   selectedLocation: null,
 
+  paymentPlans: [],
+
   members: [],
   isLoadingMembers: false,
   searchQuery: '',
   statusFilter: 'all',
   locationStats: null,
   errorMessage: null,
+  openProfileOnTab: null,
+  setOpenProfileOnTab: (tab) => set({ openProfileOnTab: tab }),
 
   initialize: async () => {
     try {
       await initDatabase();
       const trainer = await trainerService.getProfile();
       const locations = await locationService.getAllLocations();
+      const paymentPlans = await planService.getAllPlans();
 
       let selectedLocation: Location | null = null;
       if (locations.length > 0) {
@@ -85,6 +105,7 @@ export const useGymStore = create<GymState>((set, get) => ({
         trainer,
         locations,
         selectedLocation,
+        paymentPlans,
         // If no PIN is configured, mark as authenticated directly
         isAuthenticated: !trainer?.pin_hash,
       });
@@ -127,6 +148,7 @@ export const useGymStore = create<GymState>((set, get) => ({
       trainer: null,
       locations: [],
       selectedLocation: null,
+      paymentPlans: [],
       members: [],
       locationStats: null,
       searchQuery: '',
@@ -204,6 +226,28 @@ export const useGymStore = create<GymState>((set, get) => ({
       await get().selectLocation(locations[0]);
     }
   },
+
+  loadPaymentPlans: async () => {
+    const paymentPlans = await planService.getAllPlans();
+    set({ paymentPlans });
+  },
+
+  createPaymentPlan: async (data) => {
+    const plan = await planService.createPlan(data);
+    await get().loadPaymentPlans();
+    return plan;
+  },
+
+  updatePaymentPlan: async (id, data) => {
+    await planService.updatePlan(id, data);
+    await get().loadPaymentPlans();
+  },
+
+  deletePaymentPlan: async (id) => {
+    await planService.deletePlan(id);
+    await get().loadPaymentPlans();
+  },
+
 
   loadMembers: async () => {
     const { selectedLocation, searchQuery, statusFilter } = get();

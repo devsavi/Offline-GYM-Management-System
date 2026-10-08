@@ -22,7 +22,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useGymStore } from '../store/useGymStore';
 import { colors, rounded, shadows, buttonStyles } from '../theme/colors';
 import { trainerService } from '../database/services/trainerService';
-import { Location } from '../types';
+import { Location, PaymentPlan, PaymentPlanDurationUnit } from '../types';
 
 const TOP_BAR_BG = require('../../public/top_bar.webp');
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -32,9 +32,10 @@ interface TrainerProfileModalProps {
   onClose: () => void;
   onLockApp?: () => void;
   onResetAllData?: () => void;
+  initialCategory?: ProfileCategory;
 }
 
-type ProfileCategory = 'personal' | 'location' | 'password';
+type ProfileCategory = 'personal' | 'location' | 'payments' | 'password';
 
 const TITLE_OPTIONS = ['Mr.', 'Ms.', 'Mrs.', 'Coach', 'Trainer', 'Dr.'];
 
@@ -43,12 +44,18 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
   onClose,
   onLockApp,
   onResetAllData,
+  initialCategory,
 }) => {
   const {
     trainer,
     locations,
     selectedLocation,
     selectLocation,
+    paymentPlans,
+    loadPaymentPlans,
+    createPaymentPlan,
+    updatePaymentPlan,
+    deletePaymentPlan,
     updateTrainerProfile,
     updateTrainerPin,
     removeTrainerPin,
@@ -69,15 +76,24 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
   const contentSlideAnim = useRef(new Animated.Value(0)).current;
   const [tabsContainerWidth, setTabsContainerWidth] = useState(SCREEN_WIDTH - 40);
 
-  const tabWidth = tabsContainerWidth > 0 ? tabsContainerWidth / 3 : (SCREEN_WIDTH - 40) / 3;
+  const getCategoryIndex = (category: ProfileCategory) => {
+    switch (category) {
+      case 'personal': return 0;
+      case 'location': return 1;
+      case 'payments': return 2;
+      case 'password': return 3;
+    }
+  };
+
+  const tabWidth = tabsContainerWidth > 0 ? tabsContainerWidth / 4 : (SCREEN_WIDTH - 40) / 4;
   const indicatorTranslateX = tabAnim.interpolate({
-    inputRange: [0, 1, 2],
-    outputRange: [0, tabWidth, tabWidth * 2],
+    inputRange: [0, 1, 2, 3],
+    outputRange: [0, tabWidth, tabWidth * 2, tabWidth * 3],
   });
 
   const handleSwitchTab = (category: ProfileCategory) => {
     if (category === activeCategory) return;
-    const targetIndex = category === 'personal' ? 0 : category === 'location' ? 1 : 2;
+    const targetIndex = getCategoryIndex(category);
     setActiveCategory(category);
 
     Animated.spring(tabAnim, {
@@ -105,12 +121,15 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
 
   useEffect(() => {
     if (visible) {
-      const idx = activeCategory === 'personal' ? 0 : activeCategory === 'location' ? 1 : 2;
+      const startCategory = initialCategory ?? activeCategory;
+      const idx = getCategoryIndex(startCategory);
+      setActiveCategory(startCategory);
       tabAnim.setValue(idx);
       contentFadeAnim.setValue(1);
       contentSlideAnim.setValue(0);
     }
-  }, [visible]);
+  }, [visible, initialCategory]);
+
 
   // Branch switcher modal overlay state (no content movement on open!)
   const [showBranchPickerModal, setShowBranchPickerModal] = useState(false);
@@ -202,34 +221,44 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
   };
 
   // --- Category 2: Location Based Details ---
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [editingLocId, setEditingLocId] = useState<string | null>(null);
-  const [editLocName, setEditLocName] = useState('');
-  const [editLocAddress, setEditLocAddress] = useState('');
-  const [editLocDesc, setEditLocDesc] = useState('');
+  const [locFormName, setLocFormName] = useState('');
+  const [locFormAddress, setLocFormAddress] = useState('');
+  const [locFormDesc, setLocFormDesc] = useState('');
 
-  const [isAddingLoc, setIsAddingLoc] = useState(false);
-  const [newLocName, setNewLocName] = useState('');
-  const [newLocAddress, setNewLocAddress] = useState('');
-  const [newLocDesc, setNewLocDesc] = useState('');
+  const handleOpenAddLocation = () => {
+    setEditingLocId(null);
+    setLocFormName('');
+    setLocFormAddress('');
+    setLocFormDesc('');
+    setIsLocationModalOpen(true);
+  };
 
   const handleStartEditLocation = (loc: Location) => {
     setEditingLocId(loc.id);
-    setEditLocName(loc.name);
-    setEditLocAddress(loc.address || '');
-    setEditLocDesc(loc.description || '');
+    setLocFormName(loc.name);
+    setLocFormAddress(loc.address || '');
+    setLocFormDesc(loc.description || '');
+    setIsLocationModalOpen(true);
   };
 
-  const handleSaveEditLocation = async () => {
-    if (!editingLocId || !editLocName.trim()) {
-      Alert.alert('Required', 'Branch name cannot be empty');
+  const handleSaveLocationModal = async () => {
+    if (!locFormName.trim()) {
+      Alert.alert('Required', 'Branch name is required.');
       return;
     }
     try {
-      await updateLocation(editingLocId, editLocName.trim(), editLocDesc.trim(), editLocAddress.trim());
-      setEditingLocId(null);
-      Alert.alert('Updated', 'Location details updated.');
+      if (editingLocId) {
+        await updateLocation(editingLocId, locFormName.trim(), locFormDesc.trim(), locFormAddress.trim());
+        Alert.alert('Updated', 'Location details updated.');
+      } else {
+        await createLocation(locFormName.trim(), locFormDesc.trim(), locFormAddress.trim());
+        Alert.alert('Success', 'New gym branch registered.');
+      }
+      setIsLocationModalOpen(false);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to update location');
+      Alert.alert('Error', e.message || 'Failed to save location.');
     }
   };
 
@@ -254,24 +283,132 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
     );
   };
 
-  const handleCreateLocation = async () => {
-    if (!newLocName.trim()) {
-      Alert.alert('Required', 'Branch name is required');
+  // --- Category 3: Payment Plans ---
+  const DURATION_UNITS: { label: string; value: PaymentPlanDurationUnit }[] = [
+    { label: 'Days', value: 'days' },
+    { label: 'Weeks', value: 'weeks' },
+    { label: 'Months', value: 'months' },
+    { label: 'Years', value: 'years' },
+  ];
+  const COMMON_CURRENCIES = ['LKR', 'USD', 'EUR', 'GBP', 'INR', 'AUD'];
+
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState(false);
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  const [planName, setPlanName] = useState('');
+  const [planAmount, setPlanAmount] = useState('');
+  const [planCurrency, setPlanCurrency] = useState('LKR');
+  const [planCustomCurrency, setPlanCustomCurrency] = useState('');
+  const [planDurationValue, setPlanDurationValue] = useState('1');
+  const [planDurationUnit, setPlanDurationUnit] = useState<PaymentPlanDurationUnit>('months');
+  const [planMemberLimit, setPlanMemberLimit] = useState('1');
+  const [planDescription, setPlanDescription] = useState('');
+
+  const resetPlanForm = () => {
+    setPlanName('');
+    setPlanAmount('');
+    setPlanCurrency('LKR');
+    setPlanCustomCurrency('');
+    setPlanDurationValue('1');
+    setPlanDurationUnit('months');
+    setPlanMemberLimit('1');
+    setPlanDescription('');
+    setEditingPlanId(null);
+    setIsPlanModalOpen(false);
+  };
+
+  const handleOpenAddPlan = () => {
+    resetPlanForm();
+    setIsPlanModalOpen(true);
+  };
+
+  const startEditPlan = (plan: PaymentPlan) => {
+    setEditingPlanId(plan.id);
+    setPlanName(plan.name);
+    setPlanAmount(String(plan.amount));
+    const isCommon = COMMON_CURRENCIES.includes(plan.currency);
+    if (isCommon) {
+      setPlanCurrency(plan.currency);
+      setPlanCustomCurrency('');
+    } else {
+      setPlanCurrency('OTHER');
+      setPlanCustomCurrency(plan.currency);
+    }
+    setPlanDurationValue(String(plan.duration_value));
+    setPlanDurationUnit(plan.duration_unit);
+    setPlanMemberLimit(String(plan.member_limit));
+    setPlanDescription(plan.description || '');
+    setIsPlanModalOpen(true);
+  };
+
+  const getEffectiveCurrency = () =>
+    planCurrency === 'OTHER' ? planCustomCurrency.toUpperCase() : planCurrency;
+
+  const handleSavePlan = async () => {
+    const amountNum = parseFloat(planAmount);
+    const durationNum = parseInt(planDurationValue, 10);
+    const memberLimitNum = parseInt(planMemberLimit, 10);
+    const currency = getEffectiveCurrency();
+
+    if (!planName.trim()) {
+      Alert.alert('Required', 'Plan name is required.');
       return;
     }
+    if (isNaN(amountNum) || amountNum <= 0) {
+      Alert.alert('Invalid', 'Please enter a valid amount.');
+      return;
+    }
+    if (!currency) {
+      Alert.alert('Required', 'Please specify a currency.');
+      return;
+    }
+    if (isNaN(durationNum) || durationNum <= 0) {
+      Alert.alert('Invalid', 'Please enter a valid duration.');
+      return;
+    }
+
     try {
-      await createLocation(newLocName.trim(), newLocDesc.trim(), newLocAddress.trim());
-      setNewLocName('');
-      setNewLocAddress('');
-      setNewLocDesc('');
-      setIsAddingLoc(false);
-      Alert.alert('Success', 'New gym branch registered.');
+      const data = {
+        name: planName.trim(),
+        amount: amountNum,
+        currency,
+        duration_value: durationNum,
+        duration_unit: planDurationUnit,
+        member_limit: isNaN(memberLimitNum) || memberLimitNum < 1 ? 1 : memberLimitNum,
+        description: planDescription.trim() || undefined,
+        is_active: true,
+      };
+
+      if (editingPlanId) {
+        await updatePaymentPlan(editingPlanId, data);
+        Alert.alert('Updated', 'Payment plan updated successfully.');
+      } else {
+        await createPaymentPlan(data);
+        Alert.alert('Created', 'New payment plan saved.');
+      }
+      resetPlanForm();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to create branch');
+      Alert.alert('Error', e.message || 'Failed to save plan.');
     }
   };
 
-  // --- Category 3: Password / PIN Reset ---
+  const handleDeletePlan = (plan: PaymentPlan) => {
+    Alert.alert(
+      'Delete Plan',
+      `Delete "${plan.name}"? This won't affect existing member payments.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deletePaymentPlan(plan.id);
+          },
+        },
+      ]
+    );
+  };
+
+  // --- Category 4: Password / PIN Reset ---
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmNewPin, setConfirmNewPin] = useState('');
@@ -521,6 +658,21 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
 
               <TouchableOpacity
                 style={styles.categoryTabItem}
+                onPress={() => handleSwitchTab('payments')}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={[
+                    styles.categoryTabText,
+                    activeCategory === 'payments' && styles.categoryTabTextActive,
+                  ]}
+                >
+                  Payments
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.categoryTabItem}
                 onPress={() => handleSwitchTab('password')}
                 activeOpacity={0.7}
               >
@@ -545,6 +697,7 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
                 ]}
               />
             </View>
+
 
             {/* Tab content with animated smooth fade & subtle slide */}
             <Animated.View
@@ -687,57 +840,13 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
                 </View>
               )}
 
-              {/* ── 2. LOCATIONS (Professional, zero icons, normal background) ── */}
+              {/* ── 2. LOCATIONS ── */}
               {activeCategory === 'location' && (
                 <View style={styles.fieldsSection}>
                   <Text style={styles.sectionHeading}>Registered Gym Branches ({locations.length})</Text>
 
                   {locations.map((loc) => {
                     const isActive = selectedLocation?.id === loc.id;
-                    const isEditing = editingLocId === loc.id;
-
-                    if (isEditing) {
-                      return (
-                        <View key={loc.id} style={styles.editBranchBlock}>
-                          <Text style={styles.editBranchTitle}>Edit Branch: {loc.name}</Text>
-                          <TextInput
-                            style={styles.inlineEditInput}
-                            placeholder="Branch Name *"
-                            value={editLocName}
-                            onChangeText={setEditLocName}
-                          />
-                          <TextInput
-                            style={styles.inlineEditInput}
-                            placeholder="Branch Address"
-                            value={editLocAddress}
-                            onChangeText={setEditLocAddress}
-                          />
-                          <TextInput
-                            style={styles.inlineEditInput}
-                            placeholder="Description"
-                            value={editLocDesc}
-                            onChangeText={setEditLocDesc}
-                          />
-                          <View style={styles.editBranchButtonsRow}>
-                            <TouchableOpacity
-                              style={[buttonStyles.secondary, { height: 42, paddingHorizontal: 16 }]}
-                              onPress={() => setEditingLocId(null)}
-                            >
-                              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary }}>
-                                Cancel
-                              </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[buttonStyles.primary, { height: 42, paddingHorizontal: 20 }]}
-                              onPress={handleSaveEditLocation}
-                            >
-                              <Text style={buttonStyles.text}>Save</Text>
-                            </TouchableOpacity>
-                          </View>
-                        </View>
-                      );
-                    }
-
                     return (
                       <TouchableOpacity
                         key={loc.id}
@@ -803,73 +912,106 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
                   })}
 
                   {/* Add New Branch Button */}
-                  {!isAddingLoc ? (
-                    <TouchableOpacity
-                      style={[buttonStyles.outline, styles.actionButtonUnified, { borderColor: colors.primary }]}
-                      onPress={() => setIsAddingLoc(true)}
-                    >
-                      <Text style={[buttonStyles.text, { color: colors.primary }]}>
-                        ADD NEW GYM BRANCH
-                      </Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <View style={styles.newBranchForm}>
-                      <Text style={styles.inputLabel}>New Branch Name *</Text>
-                      <View style={styles.inputWrap}>
-                        <TextInput
-                          style={styles.textInput}
-                          placeholder="e.g. Uptown Power Gym"
-                          placeholderTextColor={colors.textMuted}
-                          value={newLocName}
-                          onChangeText={setNewLocName}
-                        />
-                      </View>
-
-                      <Text style={styles.inputLabel}>Branch Address</Text>
-                      <View style={styles.inputWrap}>
-                        <TextInput
-                          style={styles.textInput}
-                          placeholder="e.g. 500 Market St, Floor 2"
-                          placeholderTextColor={colors.textMuted}
-                          value={newLocAddress}
-                          onChangeText={setNewLocAddress}
-                        />
-                      </View>
-
-                      <Text style={styles.inputLabel}>Description / Notes</Text>
-                      <View style={styles.inputWrap}>
-                        <TextInput
-                          style={styles.textInput}
-                          placeholder="e.g. Open 6am - 10pm"
-                          placeholderTextColor={colors.textMuted}
-                          value={newLocDesc}
-                          onChangeText={setNewLocDesc}
-                        />
-                      </View>
-
-                      <View style={{ flexDirection: 'row', gap: 12, marginTop: 14 }}>
-                        <TouchableOpacity
-                          style={[buttonStyles.secondary, { flex: 1 }]}
-                          onPress={() => setIsAddingLoc(false)}
-                        >
-                          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textSecondary }}>
-                            Cancel
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[buttonStyles.primary, { flex: 1 }]}
-                          onPress={handleCreateLocation}
-                        >
-                          <Text style={buttonStyles.text}>SAVE BRANCH</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  )}
+                  <TouchableOpacity
+                    style={[buttonStyles.outline, styles.actionButtonUnified, { borderColor: colors.primary }]}
+                    onPress={handleOpenAddLocation}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[buttonStyles.text, { color: colors.primary }]}>
+                      ADD NEW GYM BRANCH
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               )}
 
-              {/* ── 3. PASSWORD / PIN (No container card - normal background) ── */}
+              {/* ── 3. PAYMENT PLANS (Same block UI and same button UI as location) ── */}
+              {activeCategory === 'payments' && (
+                <View style={styles.fieldsSection}>
+                  <Text style={styles.sectionHeading}>
+                    Registered Payment Plans ({paymentPlans.length})
+                  </Text>
+
+                  {paymentPlans.length === 0 ? (
+                    <View style={styles.emptyPlansCard}>
+                      <Ionicons name="card-outline" size={38} color={colors.textMuted} />
+                      <Text style={styles.emptyPlansTitle}>No payment plans yet</Text>
+                      <Text style={styles.emptyPlansSubtitle}>
+                        Add membership packages (e.g. Monthly, Family, Annual) with custom fees and currencies.
+                      </Text>
+                    </View>
+                  ) : (
+                    paymentPlans.map((plan) => {
+                      const durationLabel = `${plan.duration_value} ${plan.duration_unit}`;
+                      const isFamily = plan.member_limit > 1;
+
+                      return (
+                        <View key={plan.id} style={styles.branchListItem}>
+                          <View style={{ flex: 1 }}>
+                            <View style={styles.branchNameRow}>
+                              <Text style={styles.branchNameText}>
+                                {plan.name}
+                              </Text>
+                              {isFamily && (
+                                <View style={styles.activePillBadge}>
+                                  <Text style={styles.activePillText}>
+                                    FAMILY ({plan.member_limit})
+                                  </Text>
+                                </View>
+                              )}
+                            </View>
+
+                            <Text style={styles.branchAddressText}>
+                              {plan.currency} {plan.amount.toLocaleString()} • {durationLabel}
+                            </Text>
+                            <Text style={styles.branchMetaText}>
+                              {isFamily
+                                ? `Covers up to ${plan.member_limit} members`
+                                : 'Individual Membership'}
+                              {plan.description ? ` • ${plan.description}` : ''}
+                            </Text>
+                          </View>
+
+                          {/* Icon Actions for Edit and Delete — EXACT same button UI as location */}
+                          <View style={styles.branchIconActionsRow}>
+                            <TouchableOpacity
+                              style={styles.branchIconActionBtn}
+                              onPress={() => startEditPlan(plan)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              accessibilityLabel="Edit Plan"
+                            >
+                              <Ionicons name="pencil-outline" size={17} color="#FFFFFF" />
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={styles.branchIconActionBtn}
+                              onPress={() => handleDeletePlan(plan)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              accessibilityLabel="Delete Plan"
+                            >
+                              <Ionicons name="trash-outline" size={17} color="#FFFFFF" />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    })
+                  )}
+
+                  {/* Add New Payment Plan Button — EXACT same button UI as location */}
+                  <TouchableOpacity
+                    style={[buttonStyles.outline, styles.actionButtonUnified, { borderColor: colors.primary }]}
+                    onPress={handleOpenAddPlan}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[buttonStyles.text, { color: colors.primary }]}>
+                      ADD NEW PAYMENT PLAN
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* ── 4. PASSWORD / PIN (No container card - normal background) ── */}
               {activeCategory === 'password' && (
+
                 <View style={styles.fieldsSection}>
                   <View
                     style={[
@@ -1064,6 +1206,264 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
                     </TouchableOpacity>
                   );
                 })}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+        {/* ── MODAL: Create / Edit Gym Branch (Same UI as New Body Measurement) ── */}
+        <Modal
+          visible={isLocationModalOpen}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setIsLocationModalOpen(false)}
+        >
+          <View style={styles.sheetModalBackdrop}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFillObject}
+              activeOpacity={1}
+              onPress={() => setIsLocationModalOpen(false)}
+            />
+            <View style={styles.sheetModalBox}>
+              <View style={styles.sheetModalHeader}>
+                <Text style={styles.sheetModalTitle}>
+                  {editingLocId ? 'Edit Gym Branch' : 'New Gym Branch'}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setIsLocationModalOpen(false)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="close" size={22} color={colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={styles.inputLabel}>Branch Name *</Text>
+                <View style={styles.inputWrap}>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="e.g. Uptown Power Gym"
+                    placeholderTextColor={colors.textMuted}
+                    value={locFormName}
+                    onChangeText={setLocFormName}
+                  />
+                </View>
+
+                <Text style={styles.inputLabel}>Branch Address</Text>
+                <View style={styles.inputWrap}>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="e.g. 500 Market St, Floor 2"
+                    placeholderTextColor={colors.textMuted}
+                    value={locFormAddress}
+                    onChangeText={setLocFormAddress}
+                  />
+                </View>
+
+                <Text style={styles.inputLabel}>Description / Notes</Text>
+                <View style={styles.inputWrap}>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="e.g. Open 6am - 10pm"
+                    placeholderTextColor={colors.textMuted}
+                    value={locFormDesc}
+                    onChangeText={setLocFormDesc}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={styles.sheetSaveActionBtn}
+                  onPress={handleSaveLocationModal}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.sheetSaveActionBtnText}>
+                    {editingLocId ? 'SAVE CHANGES' : 'CREATE BRANCH'}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
+        {/* ── MODAL: Create / Edit Payment Plan (Same UI as New Body Measurement) ── */}
+        <Modal
+          visible={isPlanModalOpen}
+          animationType="slide"
+          transparent
+          onRequestClose={resetPlanForm}
+        >
+          <View style={styles.sheetModalBackdrop}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFillObject}
+              activeOpacity={1}
+              onPress={resetPlanForm}
+            />
+            <View style={styles.sheetModalBox}>
+              <View style={styles.sheetModalHeader}>
+                <Text style={styles.sheetModalTitle}>
+                  {editingPlanId ? 'Edit Payment Plan' : 'New Payment Plan'}
+                </Text>
+                <TouchableOpacity
+                  onPress={resetPlanForm}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="close" size={22} color={colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={styles.inputLabel}>Plan Name *</Text>
+                <View style={styles.inputWrap}>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="e.g. Monthly Plan, Family Package..."
+                    placeholderTextColor={colors.textMuted}
+                    value={planName}
+                    onChangeText={setPlanName}
+                  />
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.inputLabel}>Amount *</Text>
+                    <View style={styles.inputWrap}>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="2500"
+                        placeholderTextColor={colors.textMuted}
+                        keyboardType="numeric"
+                        value={planAmount}
+                        onChangeText={setPlanAmount}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.inputLabel}>Currency *</Text>
+                    <View style={styles.inputWrap}>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="LKR"
+                        placeholderTextColor={colors.textMuted}
+                        autoCapitalize="characters"
+                        value={planCurrency === 'OTHER' ? planCustomCurrency : planCurrency}
+                        onChangeText={(txt) => {
+                          const upper = txt.toUpperCase();
+                          if (COMMON_CURRENCIES.includes(upper)) {
+                            setPlanCurrency(upper);
+                            setPlanCustomCurrency('');
+                          } else {
+                            setPlanCurrency('OTHER');
+                            setPlanCustomCurrency(upper);
+                          }
+                        }}
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                {/* Common Currency Chips */}
+                <View style={styles.sheetCurrencyChipRow}>
+                  {COMMON_CURRENCIES.map((c) => (
+                    <TouchableOpacity
+                      key={c}
+                      style={[
+                        styles.sheetChip,
+                        planCurrency === c && styles.sheetChipActive,
+                      ]}
+                      onPress={() => {
+                        setPlanCurrency(c);
+                        setPlanCustomCurrency('');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.sheetChipText,
+                          planCurrency === c && styles.sheetChipTextActive,
+                        ]}
+                      >
+                        {c}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.inputLabel}>Duration Value *</Text>
+                    <View style={styles.inputWrap}>
+                      <TextInput
+                        style={styles.textInput}
+                        placeholder="1"
+                        placeholderTextColor={colors.textMuted}
+                        keyboardType="numeric"
+                        value={planDurationValue}
+                        onChangeText={setPlanDurationValue}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.inputLabel}>Duration Unit *</Text>
+                    <View style={styles.sheetUnitChipRow}>
+                      {DURATION_UNITS.map((u) => (
+                        <TouchableOpacity
+                          key={u.value}
+                          style={[
+                            styles.sheetChip,
+                            planDurationUnit === u.value && styles.sheetChipActive,
+                          ]}
+                          onPress={() => setPlanDurationUnit(u.value)}
+                          activeOpacity={0.7}
+                        >
+                          <Text
+                            style={[
+                              styles.sheetChipText,
+                              planDurationUnit === u.value && styles.sheetChipTextActive,
+                            ]}
+                          >
+                            {u.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                </View>
+
+                <Text style={styles.inputLabel}>Member Limit (1 = Individual, 2+ = Family)</Text>
+                <View style={styles.inputWrap}>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="1"
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="numeric"
+                    value={planMemberLimit}
+                    onChangeText={setPlanMemberLimit}
+                  />
+                </View>
+
+                <Text style={styles.inputLabel}>Description (Optional)</Text>
+                <View style={[styles.inputWrap, { height: 80, alignItems: 'flex-start', paddingTop: 12 }]}>
+                  <TextInput
+                    style={[styles.textInput, { height: 60, textAlignVertical: 'top' }]}
+                    placeholder="e.g. Covers 2 family members for 1 month"
+                    placeholderTextColor={colors.textMuted}
+                    multiline
+                    value={planDescription}
+                    onChangeText={setPlanDescription}
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={styles.sheetSaveActionBtn}
+                  onPress={handleSavePlan}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.sheetSaveActionBtnText}>
+                    {editingPlanId ? 'UPDATE PAYMENT PLAN' : 'CREATE PAYMENT PLAN'}
+                  </Text>
+                </TouchableOpacity>
               </ScrollView>
             </View>
           </View>
@@ -1598,4 +1998,109 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 18,
   },
+
+  // ── BOTTOM SHEET MODAL STYLES (Matching New Body Measurement UI) ──
+  sheetModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  sheetModalBox: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '88%',
+  },
+  sheetModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sheetModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  sheetSaveActionBtn: {
+    height: 52,
+    backgroundColor: colors.primary,
+    borderRadius: 9999,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 22,
+    marginBottom: 10,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.24,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  sheetSaveActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  sheetCurrencyChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  sheetUnitChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 6,
+  },
+  sheetChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 9999,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FAFC',
+  },
+  sheetChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.mintSoft,
+  },
+  sheetChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  sheetChipTextActive: {
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  emptyPlansCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 20,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    marginBottom: 14,
+  },
+  emptyPlansTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginTop: 8,
+  },
+  emptyPlansSubtitle: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: 4,
+    lineHeight: 18,
+  },
 });
+
