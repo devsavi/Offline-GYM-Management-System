@@ -5,14 +5,17 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  FlatList,
   Modal,
   StyleSheet,
   StatusBar,
   Alert,
+  Image,
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, rounded, shadows } from '../theme/colors';
@@ -23,6 +26,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { Exercise, ExerciseCategory, Member, PlanExerciseItem } from '../types';
 import { CategoryIcon } from '../components/CategoryIcon';
+import { ExerciseImage } from '../components/ExerciseImage';
 
 const TOP_BAR_BG = require('../../public/top_bar.webp');
 const PLACEHOLDER_COLOR = '#8B9E93';
@@ -107,6 +111,7 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
   const [customName, setCustomName] = useState('');
   const [customCategory, setCustomCategory] = useState<ExerciseCategory>('Chest');
   const [customDescription, setCustomDescription] = useState('');
+  const [customImageUri, setCustomImageUri] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Multi-select state for exercise library
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
@@ -152,6 +157,7 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
       target_weight: 'Moderate',
       order_index: selectedExercises.length,
       day_of_week: 'Day 1',
+      image_uri: exercise.image_uri,
     };
 
     setSelectedExercises([...selectedExercises, newItem]);
@@ -187,10 +193,62 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
       target_weight: 'Moderate',
       order_index: selectedExercises.length + idx,
       day_of_week: 'Day 1',
+      image_uri: exercise.image_uri,
     }));
     setSelectedExercises((prev) => [...prev, ...newItems]);
     exitMultiSelect();
     setShowExerciseModal(false);
+  };
+
+  const handlePickExerciseImage = async () => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*,.svg';
+      input.onchange = (e: any) => {
+        const file = e.target?.files?.[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const dataUrl = event.target?.result as string;
+            if (dataUrl) {
+              setCustomImageUri(dataUrl);
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+      input.click();
+      return;
+    }
+
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Needed', 'Please allow media library access to pick an exercise image.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        base64: true,
+        quality: 0.9,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        if (asset.base64) {
+          const mime = asset.mimeType || (asset.uri.endsWith('.svg') ? 'image/svg+xml' : 'image/jpeg');
+          setCustomImageUri(`data:${mime};base64,${asset.base64}`);
+        } else {
+          setCustomImageUri(asset.uri);
+        }
+      }
+    } catch (err: any) {
+      console.error('Image pick error:', err);
+      Alert.alert('Error', 'Could not open image picker.');
+    }
   };
 
   const handleCreateAndAddCustomExercise = async () => {
@@ -203,13 +261,15 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
       const created = await workoutService.addCustomExercise(
         customName.trim(),
         customCategory,
-        customDescription.trim() || undefined
+        customDescription.trim() || undefined,
+        customImageUri.trim() || undefined
       );
       setAllExercises((prev) => [created, ...prev]);
       handleSelectExercise(created);
       setCustomName('');
       setCustomDescription('');
       setCustomCategory('Chest');
+      setCustomImageUri('');
       setExerciseModalMode('library');
       setShowExerciseModal(false);
     } catch (e: any) {
@@ -430,7 +490,10 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
             </Text>
             <TouchableOpacity
               style={styles.addExerciseInlineBtn}
-              onPress={() => setShowExerciseModal(true)}
+              onPress={() => {
+                setCustomImageUri('');
+                setShowExerciseModal(true);
+              }}
               activeOpacity={0.85}
             >
               <Ionicons name="add" size={16} color="#FFFFFF" />
@@ -450,7 +513,19 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
             selectedExercises.map((item, index) => (
               <View key={index} style={styles.exerciseItemCard}>
                 <View style={styles.exCardHeader}>
-                  <View style={{ flex: 1 }}>
+                  <View style={styles.exerciseItemThumbWrap}>
+                    <ExerciseImage
+                      exercise={{
+                        id: item.exercise_id,
+                        name: item.exercise_name,
+                        category: item.category,
+                        image_uri: item.image_uri,
+                      }}
+                      size={40}
+                      height={40}
+                    />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
                     <Text style={styles.exName}>
                       {index + 1}. {item.exercise_name}
                     </Text>
@@ -669,14 +744,85 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
                   </ScrollView>
                 </View>
 
-                {/* Exercises List */}
-                <ScrollView
-                  style={{ flex: 1, marginTop: 4 }}
+                {/* Exercises 2-Column Grid Matching Exercises Tab UI */}
+                <FlatList<Exercise>
+                  data={filteredExercises}
+                  keyExtractor={(item: Exercise) => item.id}
+                  numColumns={2}
+                  columnWrapperStyle={styles.exerciseColumnWrapper}
+                  contentContainerStyle={styles.exerciseGridListContent}
                   showsVerticalScrollIndicator={false}
-                  contentContainerStyle={{ paddingBottom: 24 }}
                   keyboardShouldPersistTaps="handled"
-                >
-                  {filteredExercises.length === 0 ? (
+                  renderItem={({ item: ex }: { item: Exercise }) => {
+                    const isSelected = multiSelectedIds.includes(ex.id);
+                    return (
+                      <TouchableOpacity
+                        style={[
+                          styles.modalExerciseGridCard,
+                          isMultiSelectMode && isSelected && styles.modalExerciseGridCardSelected,
+                        ]}
+                        onPress={() => {
+                          if (isMultiSelectMode) {
+                            handleMultiSelectToggle(ex.id);
+                          } else {
+                            handleSelectExercise(ex);
+                          }
+                        }}
+                        onLongPress={() => handleExerciseLongPress(ex.id)}
+                        delayLongPress={300}
+                        activeOpacity={0.8}
+                      >
+                        {/* Exercise Image Container with Top-Right Badge/Add Pill */}
+                        <View style={styles.modalCardImageContainer}>
+                          <ExerciseImage
+                            exercise={ex}
+                            size={190}
+                            height={200}
+                          />
+                          {isMultiSelectMode ? (
+                            <View
+                              style={[
+                                styles.cardSelectBadge,
+                                isSelected && styles.cardSelectBadgeActive,
+                              ]}
+                            >
+                              {isSelected && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
+                            </View>
+                          ) : (
+                            <View style={styles.cardAddPill}>
+                              <Ionicons name="add" size={13} color="#FFFFFF" />
+                              <Text style={styles.cardAddPillText}>Add</Text>
+                            </View>
+                          )}
+                        </View>
+
+                        {/* Card Details: Name, Category, and Description below */}
+                        <View style={styles.modalCardBottomSection}>
+                          <View style={styles.modalCardHeaderRow}>
+                            <Text style={styles.modalExerciseName} numberOfLines={2}>
+                              {ex.name}
+                            </Text>
+                            <View style={styles.categoryTag}>
+                              <Text style={styles.categoryTagText}>{ex.category}</Text>
+                            </View>
+                          </View>
+
+                          {ex.description ? (
+                            <Text style={styles.modalExerciseDesc} numberOfLines={3}>
+                              {ex.description}
+                            </Text>
+                          ) : null}
+
+                          {ex.is_custom && (
+                            <View style={styles.customBadge}>
+                              <Text style={styles.customBadgeText}>Added</Text>
+                            </View>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  }}
+                  ListEmptyComponent={
                     <View style={styles.modalEmptyContainer}>
                       <Ionicons name="fitness-outline" size={44} color={colors.textMuted} />
                       <Text style={styles.modalEmptyText}>No exercises found</Text>
@@ -684,67 +830,8 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
                         Adjust your search, choose another category, or switch to "Create New Exercise" above.
                       </Text>
                     </View>
-                  ) : (
-                    filteredExercises.map((ex) => {
-                      const isSelected = multiSelectedIds.includes(ex.id);
-                      return (
-                        <TouchableOpacity
-                          key={ex.id}
-                          style={[
-                            styles.modalExerciseCard,
-                            isMultiSelectMode && isSelected && styles.modalExerciseCardSelected,
-                          ]}
-                          onPress={() => {
-                            if (isMultiSelectMode) {
-                              handleMultiSelectToggle(ex.id);
-                            } else {
-                              handleSelectExercise(ex);
-                            }
-                          }}
-                          onLongPress={() => handleExerciseLongPress(ex.id)}
-                          delayLongPress={300}
-                          activeOpacity={0.75}
-                        >
-                          <View style={styles.exerciseIconCircle}>
-                            <CategoryIcon category={ex.category} size={28} />
-                          </View>
-
-                          <View style={{ flex: 1, marginLeft: 12 }}>
-                            <View style={styles.modalCardHeader}>
-                              <Text style={styles.exerciseName}>{ex.name}</Text>
-                              <View style={styles.categoryTag}>
-                                <Text style={styles.categoryTagText}>{ex.category}</Text>
-                              </View>
-                            </View>
-                            {ex.description ? (
-                              <Text style={styles.exerciseDesc} numberOfLines={2}>
-                                {ex.description}
-                              </Text>
-                            ) : !ex.is_custom ? (
-                              <Text style={styles.exerciseDescMuted}>Standard gym movement</Text>
-                            ) : null}
-                            {ex.is_custom && (
-                              <View style={styles.customBadge}>
-                                <Text style={styles.customBadgeText}>Added</Text>
-                              </View>
-                            )}
-                          </View>
-
-                          {isMultiSelectMode ? (
-                            <View style={[styles.multiSelectCheckCircle, isSelected && styles.multiSelectCheckCircleActive]}>
-                              {isSelected && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
-                            </View>
-                          ) : (
-                            <View style={styles.modalAddActionBadge}>
-                              <Ionicons name="add" size={16} color="#FFFFFF" />
-                              <Text style={styles.modalAddActionBadgeText}>Add</Text>
-                            </View>
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })
-                  )}
-                </ScrollView>
+                  }
+                />
 
                 {/* Multi-select bottom bar */}
                 {isMultiSelectMode && (
@@ -832,6 +919,58 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
                     );
                   })}
                 </ScrollView>
+
+                {/* ── Exercise Image Upload Option (Supports Any Format) ── */}
+                <View style={styles.imageSectionHeader}>
+                  <Text style={styles.inputLabel}>Exercise Image (Optional)</Text>
+                  <Text style={styles.imageFormatHint}>Any format (PNG, JPG, SVG, WebP, GIF)</Text>
+                </View>
+
+                {customImageUri ? (
+                  <View style={styles.imagePreviewContainer}>
+                    <View style={styles.imagePreviewBox}>
+                      <Image
+                        source={{ uri: customImageUri }}
+                        style={styles.imagePreviewThumb}
+                        resizeMode="contain"
+                      />
+                    </View>
+                    <View style={styles.imageActionBtns}>
+                      <TouchableOpacity
+                        style={styles.changeImageBtn}
+                        onPress={handlePickExerciseImage}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="image-outline" size={16} color={colors.primary} />
+                        <Text style={styles.changeImageBtnText}>Change Image</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.removeImageBtn}
+                        onPress={() => setCustomImageUri('')}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                        <Text style={styles.removeImageBtnText}>Remove</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.uploadDashedBox}
+                    onPress={handlePickExerciseImage}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.uploadIconCircle}>
+                      <Ionicons name="cloud-upload-outline" size={24} color={colors.primary} />
+                    </View>
+                    <Text style={styles.uploadPromptText}>
+                      Tap to add exercise image
+                    </Text>
+                    <Text style={styles.uploadPromptSubtext}>
+                      Upload any image format or SVG illustration
+                    </Text>
+                  </TouchableOpacity>
+                )}
 
                 <Text style={styles.inputLabel}>Description / Form Cues (Optional)</Text>
                 <View style={[styles.inputWrap, styles.textAreaWrap]}>
@@ -1304,33 +1443,108 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '700',
   },
-  modalExerciseCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: rounded.md,
-    padding: 13,
-    marginBottom: 10,
+  exerciseItemThumbWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+    overflow: 'hidden',
   },
-  modalExerciseCardSelected: {
+  modalExerciseGridCard: {
+    flex: 1,
+    maxWidth: '48.5%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+  },
+  modalExerciseGridCardSelected: {
     borderColor: colors.primary,
+    borderWidth: 2,
     backgroundColor: '#F0FDF4',
   },
-  multiSelectCheckCircle: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+  modalCardImageContainer: {
+    height: 175,
+    backgroundColor: '#F8FAFC',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    position: 'relative',
+  },
+  cardAddPill: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    gap: 2,
+  },
+  cardAddPillText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  cardSelectBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: '#CBD5E1',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  multiSelectCheckCircleActive: {
+  cardSelectBadgeActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  modalCardBottomSection: {
+    padding: 10,
+  },
+  modalCardHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 4,
+    marginBottom: 4,
+  },
+  modalExerciseName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    flex: 1,
+    lineHeight: 17,
+  },
+  modalExerciseDesc: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    lineHeight: 15,
+    marginTop: 4,
+  },
+  exerciseColumnWrapper: {
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  exerciseGridListContent: {
+    paddingHorizontal: 4,
+    paddingTop: 6,
+    paddingBottom: 24,
   },
   multiSelectBar: {
     flexDirection: 'row',
@@ -1363,86 +1577,37 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     paddingVertical: 12,
     borderRadius: 9999,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 3,
   },
   multiSelectAddBtnText: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
   },
-  exerciseIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  exerciseName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    flex: 1,
-  },
   categoryTag: {
     backgroundColor: colors.sage,
-    paddingHorizontal: 8,
+    paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
+    alignSelf: 'flex-start',
   },
   categoryTagText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '600',
     color: colors.primary,
-  },
-  exerciseDesc: {
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 3,
-    lineHeight: 16,
-  },
-  exerciseDescMuted: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 3,
-    fontStyle: 'italic',
   },
   customBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: colors.mintSoft,
-    paddingHorizontal: 7,
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
-    marginTop: 4,
+    marginTop: 6,
   },
   customBadgeText: {
     fontSize: 9,
-    fontWeight: '800',
-    color: colors.primary,
-  },
-  modalAddActionBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: rounded.full,
-    marginLeft: 8,
-  },
-  modalAddActionBadgeText: {
-    fontSize: 12,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: '#0284C7',
+    textTransform: 'uppercase',
   },
   modalEmptyContainer: {
     alignItems: 'center',
@@ -1463,6 +1628,107 @@ const styles = StyleSheet.create({
     marginTop: 4,
     lineHeight: 16,
   },
+  imageSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  imageFormatHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: '500',
+  },
+  uploadDashedBox: {
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    borderStyle: 'dashed',
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    marginBottom: 6,
+  },
+  uploadIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.sage,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  uploadPromptText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  uploadPromptSubtext: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  imagePreviewContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 12,
+    marginBottom: 6,
+  },
+  imagePreviewBox: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  imagePreviewThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  imageActionBtns: {
+    flex: 1,
+    gap: 8,
+  },
+  changeImageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EEF3F0',
+    height: 34,
+    borderRadius: 8,
+    gap: 6,
+  },
+  changeImageBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  removeImageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FEE2E2',
+    height: 34,
+    borderRadius: 8,
+    gap: 6,
+  },
+  removeImageBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.danger,
+  },
   sheetSaveActionBtn: {
     height: 52,
     backgroundColor: colors.primary,
@@ -1472,11 +1738,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 22,
     marginBottom: 10,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.24,
-    shadowRadius: 8,
-    elevation: 5,
   },
   sheetSaveActionBtnText: {
     color: '#FFFFFF',

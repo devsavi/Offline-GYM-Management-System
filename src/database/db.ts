@@ -82,6 +82,20 @@ export async function initDatabase(): Promise<void> {
     await db.runAsync('CREATE INDEX IF NOT EXISTS idx_payments_payer ON payments(payer_member_id);');
   } catch {}
 
+  // Safe column migration for exercises table
+  try {
+    await db.runAsync('ALTER TABLE exercises ADD COLUMN image_uri TEXT;');
+  } catch {}
+  try {
+    await db.runAsync(
+      `UPDATE exercises SET image_uri = '/exercises/chest/bench_press.webp' WHERE (id = 'ex_ch_1' OR (LOWER(name) LIKE '%bench press%' AND LOWER(category) = 'chest')) AND (image_uri IS NULL OR image_uri = '' OR image_uri = '/exercises/chest/bench_press.svg');`
+    );
+    // Clear the bench_press image from any non-chest exercises that may have had it set incorrectly
+    await db.runAsync(
+      `UPDATE exercises SET image_uri = NULL WHERE LOWER(name) LIKE '%bench press%' AND LOWER(category) != 'chest' AND image_uri = '/exercises/chest/bench_press.webp';`
+    );
+  } catch {}
+
   // 3. Seed Pre-populated Exercises Dictionary atomically
   try {
     const existing = await db.getFirstAsync<{ count: number }>(
@@ -93,9 +107,9 @@ export async function initDatabase(): Promise<void> {
       await db.withTransactionAsync(async () => {
         for (const ex of DEFAULT_EXERCISES) {
           await db.runAsync(
-            `INSERT OR IGNORE INTO exercises (id, name, category, description, is_custom)
-             VALUES (?, ?, ?, ?, 0);`,
-            [ex.id, ex.name, ex.category, ex.description || '']
+            `INSERT OR IGNORE INTO exercises (id, name, category, description, is_custom, image_uri)
+             VALUES (?, ?, ?, ?, 0, ?);`,
+            [ex.id, ex.name, ex.category, ex.description || '', (ex as any).image_uri || null]
           );
         }
       });

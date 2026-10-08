@@ -80,7 +80,8 @@ CREATE TABLE IF NOT EXISTS exercises (
   name TEXT NOT NULL,
   category TEXT NOT NULL,
   description TEXT,
-  is_custom INTEGER DEFAULT 0
+  is_custom INTEGER DEFAULT 0,
+  image_uri TEXT
 );
 
 CREATE TABLE IF NOT EXISTS workout_plans (

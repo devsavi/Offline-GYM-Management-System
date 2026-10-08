@@ -2,7 +2,7 @@ import { Exercise } from '../types';
 
 export const DEFAULT_EXERCISES: Omit<Exercise, 'is_custom'>[] = [
   // 1. Chest
-  { id: 'ex_ch_1', name: 'Barbell Bench Press', category: 'Chest', description: 'Compound movement for pectoral mass and upper body pushing strength.' },
+  { id: 'ex_ch_1', name: 'Barbell Bench Press', category: 'Chest', description: 'Compound movement for pectoral mass and upper body pushing strength.', image_uri: '/exercises/chest/bench_press.webp' },
   { id: 'ex_ch_2', name: 'Incline Dumbbell Press', category: 'Chest', description: 'Upper chest development with independent dumbbell stabilization.' },
   { id: 'ex_ch_3', name: 'Cable Chest Flyes', category: 'Chest', description: 'Isolation exercise with continuous resistance across full adduction.' },
   { id: 'ex_ch_4', name: 'Chest Dips', category: 'Chest', description: 'Bodyweight or weighted dips with slight torso lean to emphasize lower pec.' },

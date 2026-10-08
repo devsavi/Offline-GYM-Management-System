@@ -41,6 +41,7 @@ import {
   CustomMeasurementField,
 } from '../types';
 import { useGymStore } from '../store/useGymStore';
+import { ExerciseImage } from '../components/ExerciseImage';
 
 const TOP_BAR_BG = require('../../public/top_bar.webp');
 const PLACEHOLDER_COLOR = '#8B9E93';
@@ -1404,7 +1405,19 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
                         <View style={styles.exerciseNum}>
                           <Text style={styles.exerciseNumText}>{idx + 1}</Text>
                         </View>
-                        <View style={{ flex: 1 }}>
+                        <View style={styles.exerciseItemThumbWrap}>
+                          <ExerciseImage
+                            exercise={{
+                              id: ex.exercise_id,
+                              name: ex.exercise_name,
+                              category: ex.category,
+                              image_uri: ex.image_uri,
+                            }}
+                            size={38}
+                            height={38}
+                          />
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 10 }}>
                           <Text style={styles.exerciseItemName}>{ex.exercise_name}</Text>
                           <Text style={styles.exerciseItemMeta}>
                             {ex.category} • {ex.sets} sets × {ex.reps} reps • Rest: {ex.rest_time}s
@@ -3251,6 +3264,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
+  },
+  exerciseItemThumbWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
   },
   exerciseNumText: {
     color: '#FFFFFF',

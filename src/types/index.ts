@@ -95,6 +95,7 @@ export interface Exercise {
   category: ExerciseCategory;
   description?: string;
   is_custom: boolean;
+  image_uri?: string;
 }
 
 export interface WorkoutPlan {
@@ -123,6 +124,7 @@ export interface PlanExerciseItem {
   target_weight?: string;
   order_index: number;
   notes?: string;
+  image_uri?: string;
 }
 
 export interface CheckIn {

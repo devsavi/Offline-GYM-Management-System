@@ -19,15 +19,26 @@ export const workoutService = {
     return rows.map((r) => ({
       ...r,
       is_custom: Boolean(r.is_custom),
+      image_uri:
+        r.image_uri ||
+        (r.id === 'ex_ch_1' ||
+        (r.name?.toLowerCase().includes('bench press') && r.category?.toLowerCase() === 'chest')
+          ? '/exercises/chest/bench_press.webp'
+          : undefined),
     }));
   },
 
-  async addCustomExercise(name: string, category: ExerciseCategory, description?: string): Promise<Exercise> {
+  async addCustomExercise(
+    name: string,
+    category: ExerciseCategory,
+    description?: string,
+    image_uri?: string
+  ): Promise<Exercise> {
     const id = `ex_c_${Date.now()}`;
     await runQuery(
-      `INSERT INTO exercises (id, name, category, description, is_custom)
-       VALUES (?, ?, ?, ?, 1);`,
-      [id, name.trim(), category, description?.trim() || null]
+      `INSERT INTO exercises (id, name, category, description, is_custom, image_uri)
+       VALUES (?, ?, ?, ?, 1, ?);`,
+      [id, name.trim(), category, description?.trim() || null, image_uri?.trim() || null]
     );
     return {
       id,
@@ -35,6 +46,7 @@ export const workoutService = {
       category,
       description,
       is_custom: true,
+      image_uri: image_uri?.trim() || undefined,
     };
   },
 
@@ -100,7 +112,7 @@ export const workoutService = {
       `SELECT
         pe.id, pe.workout_plan_id, pe.exercise_id, pe.day_of_week,
         pe.sets, pe.reps, pe.rest_time, pe.target_weight, pe.order_index, pe.notes,
-        e.name as exercise_name, e.category
+        e.name as exercise_name, e.category, e.image_uri
        FROM plan_exercises pe
        JOIN exercises e ON pe.exercise_id = e.id
        WHERE pe.workout_plan_id = ?
@@ -113,6 +125,12 @@ export const workoutService = {
       sets: Number(r.sets),
       rest_time: Number(r.rest_time),
       order_index: Number(r.order_index),
+      image_uri:
+        r.image_uri ||
+        (r.exercise_id === 'ex_ch_1' ||
+        (r.exercise_name?.toLowerCase().includes('bench press') && r.category?.toLowerCase() === 'chest')
+          ? '/exercises/chest/bench_press.webp'
+          : undefined),
     }));
   },
 
@@ -198,5 +216,14 @@ export const workoutService = {
 
   async deleteWorkoutPlan(planId: string): Promise<void> {
     await runQuery('DELETE FROM workout_plans WHERE id = ?;', [planId]);
+  },
+
+  /**
+   * Permanently delete an exercise from the dictionary.
+   * Also removes any plan_exercises rows that reference it.
+   */
+  async deleteExercise(exerciseId: string): Promise<void> {
+    await runQuery('DELETE FROM plan_exercises WHERE exercise_id = ?;', [exerciseId]);
+    await runQuery('DELETE FROM exercises WHERE id = ?;', [exerciseId]);
   },
 };
