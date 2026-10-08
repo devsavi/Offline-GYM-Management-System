@@ -55,7 +55,7 @@ export const workoutService = {
     const planRow = await queryFirst<any>(
       `SELECT * FROM workout_plans
        WHERE member_id = ? AND is_active = 1
-       ORDER BY start_date DESC LIMIT 1;`,
+       ORDER BY created_at DESC, start_date DESC LIMIT 1;`,
       [memberId]
     );
 

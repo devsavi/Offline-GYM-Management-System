@@ -213,12 +213,12 @@ export const ExercisesTab: React.FC = () => {
                   <Text style={styles.exerciseDesc} numberOfLines={2}>
                     {item.description}
                   </Text>
-                ) : (
+                ) : !item.is_custom ? (
                   <Text style={styles.exerciseDescMuted}>Standard gym movement</Text>
-                )}
+                ) : null}
                 {item.is_custom && (
                   <View style={styles.customBadge}>
-                    <Text style={styles.customBadgeText}>CUSTOM</Text>
+                    <Text style={styles.customBadgeText}>Added</Text>
                   </View>
                 )}
               </View>
@@ -521,16 +521,16 @@ const styles = StyleSheet.create({
   },
   customBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 6,
+    backgroundColor: colors.mintSoft,
+    paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 4,
     marginTop: 4,
   },
   customBadgeText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '800',
-    color: '#D97706',
+    color: colors.primary,
   },
   emptyContainer: {
     alignItems: 'center',

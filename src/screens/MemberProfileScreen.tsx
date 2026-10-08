@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,9 @@ import {
   ImageBackground,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -178,13 +180,19 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
   const [coveredMemberIds, setCoveredMemberIds] = useState<string[]>([]);
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    loadAllMemberData();
-  }, [memberId]);
+  // Automatically refresh member profile data whenever screen gains focus (e.g. returning from PlanBuilder)
+  useFocusEffect(
+    useCallback(() => {
+      loadAllMemberData(false);
+    }, [memberId])
+  );
 
-  const loadAllMemberData = async () => {
-    setLoading(true);
+  const loadAllMemberData = async (showSpinner = false) => {
+    if (showSpinner) {
+      setLoading(true);
+    }
     try {
       const [m, measList, currentPlan, pastPlans, pays, visits, cFields] = await Promise.all([
         memberService.getMemberById(memberId),
@@ -224,6 +232,12 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await loadAllMemberData(false);
+    setIsRefreshing(false);
   };
 
   const formatWeight = (valKg?: number) => {
@@ -721,6 +735,14 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 28 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={handleRefresh}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
+          />
+        }
       >
         <View style={styles.cleanBody}>
           {/* Profile Header Avatar & Summary Block */}
@@ -808,7 +830,13 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
               <TouchableOpacity
                 key={t.id}
                 style={[styles.categoryTabItem, activeTab === t.id && styles.categoryTabItemActive]}
-                onPress={() => setActiveTab(t.id)}
+                onPress={() => {
+                  setActiveTab(t.id);
+                  if (t.id === 'workouts') {
+                    workoutService.getActivePlan(memberId).then(setActivePlan).catch(() => {});
+                    workoutService.getHistoricalPlans(memberId).then(setHistoricalPlans).catch(() => {});
+                  }
+                }}
                 activeOpacity={0.7}
               >
                 <Text
