@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,12 @@ import {
   StatusBar,
   Image,
   ImageBackground,
+  Platform,
+  Animated,
+  Easing,
+  useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
@@ -25,22 +29,48 @@ import { LibraryTab } from './tabs/LibraryTab';
 import { BottomNavBar, TabKey } from '../components/BottomNavBar';
 import { TrainerProfileModal } from '../components/TrainerProfileModal';
 
-const BG_IMAGE = require('../../public/home_bg.jpg');
+const TOP_BAR_BG = require('../../public/top_bar.webp');
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
+const TAB_ORDER: TabKey[] = ['Home', 'Members', 'Exercises', 'Library'];
+
 export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
   const { trainer, selectedLocation, refreshDashboard } = useGymStore();
 
-  // Bottom Navigation state: default is 'Home'
+  // Bottom Navigation state
   const [activeTab, setActiveTab] = useState<TabKey>('Home');
-
-  // Profile modal state
   const [profileModalVisible, setProfileModalVisible] = useState(false);
+
+  // Horizontal page slider animation
+  const pageSlideAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     refreshDashboard();
   }, [selectedLocation]);
+
+  // Keep page track aligned on screen resize
+  useEffect(() => {
+    const idx = TAB_ORDER.indexOf(activeTab);
+    pageSlideAnim.setValue(-idx * SCREEN_WIDTH);
+  }, [SCREEN_WIDTH]);
+
+  const navigateTab = useCallback(
+    (tab: TabKey) => {
+      const targetIdx = TAB_ORDER.indexOf(tab);
+      if (targetIdx === -1) return;
+      setActiveTab(tab);
+      Animated.timing(pageSlideAnim, {
+        toValue: -targetIdx * SCREEN_WIDTH,
+        duration: 320,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start();
+    },
+    [SCREEN_WIDTH]
+  );
 
   const getTrainerInitials = () => {
     if (trainer?.first_name || trainer?.last_name) {
@@ -64,19 +94,18 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      {/* Top Header Bar - With BG Image, increased height, larger texts & large profile icon */}
+      {/* Top Header Bar */}
       <View style={styles.headerContainer}>
         <ImageBackground
-          source={BG_IMAGE}
+          source={TOP_BAR_BG}
           style={styles.headerBg}
           resizeMode="cover"
         >
-          <View style={styles.headerOverlay}>
+          <View style={[styles.headerOverlay, { paddingTop: insets.top + 12 }]}>
             <View style={styles.headerContent}>
-              {/* Left: App Name Left-Aligned with larger typography */}
               <View style={styles.brandLeft}>
                 <Text style={styles.brandTitle}>GripState</Text>
                 <View style={styles.brandSubtitleRow}>
@@ -87,7 +116,6 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
                 </View>
               </View>
 
-              {/* Right: Large Clean Profile Icon Button */}
               <TouchableOpacity
                 style={styles.profileBtn}
                 onPress={() => setProfileModalVisible(true)}
@@ -107,35 +135,49 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
         </ImageBackground>
       </View>
 
-      {/* Active Tab Screen Content */}
+      {/* Horizontal Sliding Tab Screens */}
       <View style={styles.body}>
-        {activeTab === 'Home' && (
-          <HomeTab
-            onNavigateTab={(tab) => setActiveTab(tab)}
-            onAddMember={() => navigation.navigate('AddMember')}
-            onSelectMember={(memberId) => navigation.navigate('MemberProfile', { memberId })}
-          />
-        )}
+        <Animated.View
+          style={[
+            styles.pagesTrack,
+            {
+              width: SCREEN_WIDTH * 4,
+              transform: [{ translateX: pageSlideAnim }],
+            },
+          ]}
+        >
+          <View style={[styles.pageWrapper, { width: SCREEN_WIDTH }]}>
+            <HomeTab
+              onNavigateTab={navigateTab}
+              onAddMember={() => navigation.navigate('AddMember')}
+              onSelectMember={(memberId) => navigation.navigate('MemberProfile', { memberId })}
+            />
+          </View>
 
-        {activeTab === 'Members' && (
-          <MembersTab
-            onSelectMember={(memberId) => navigation.navigate('MemberProfile', { memberId })}
-            onAddMember={() => navigation.navigate('AddMember')}
-          />
-        )}
+          <View style={[styles.pageWrapper, { width: SCREEN_WIDTH }]}>
+            <MembersTab
+              onSelectMember={(memberId) => navigation.navigate('MemberProfile', { memberId })}
+              onAddMember={() => navigation.navigate('AddMember')}
+            />
+          </View>
 
-        {activeTab === 'Exercises' && <ExercisesTab />}
+          <View style={[styles.pageWrapper, { width: SCREEN_WIDTH }]}>
+            <ExercisesTab />
+          </View>
 
-        {activeTab === 'Library' && <LibraryTab />}
+          <View style={[styles.pageWrapper, { width: SCREEN_WIDTH }]}>
+            <LibraryTab />
+          </View>
+        </Animated.View>
       </View>
 
-      {/* Bottom Navigation Bar */}
+      {/* Floating Bottom Navigation Bar */}
       <BottomNavBar
         activeTab={activeTab}
-        onTabChange={(tab) => setActiveTab(tab)}
+        onTabChange={navigateTab}
       />
 
-      {/* Trainer Profile Categorized Modal (with Location Switch inside) */}
+      {/* Trainer Profile Modal */}
       <TrainerProfileModal
         visible={profileModalVisible}
         onClose={() => setProfileModalVisible(false)}
@@ -166,12 +208,11 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   headerOverlay: {
-    backgroundColor: 'rgba(6, 35, 22, 0.76)',
+    backgroundColor: 'rgba(6, 35, 22, 0.70)',
     paddingHorizontal: 20,
-    paddingTop: 16,
     paddingBottom: 20,
     minHeight: 96,
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
   },
   headerContent: {
     flexDirection: 'row',
@@ -240,5 +281,16 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+    overflow: 'hidden',
+    paddingBottom: 88,   // Reserve space for the floating pill navbar
+  },
+  pagesTrack: {
+    flex: 1,
+    flexDirection: 'row',
+    height: '100%',
+  },
+  pageWrapper: {
+    flex: 1,
+    height: '100%',
   },
 });

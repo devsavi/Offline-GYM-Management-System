@@ -47,7 +47,7 @@ export const measurementService = {
   ): Promise<Measurement> {
     const id = `meas_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const now = new Date().toISOString();
-    const calculatedBMI = this.calculateBMI(data.weight, data.height);
+    const calculatedBMI = this.calculateBMI(data.weight || 0, data.height || 0);
     const customValuesJson = data.custom_values ? JSON.stringify(data.custom_values) : null;
 
     await runQuery(
@@ -60,8 +60,8 @@ export const measurementService = {
         id,
         data.member_id,
         data.date,
-        data.weight,
-        data.height,
+        data.weight ?? 0,
+        data.height ?? 0,
         calculatedBMI,
         data.chest ?? null,
         data.arms ?? null,

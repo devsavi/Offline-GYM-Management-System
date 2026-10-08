@@ -5,15 +5,20 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   Alert,
   Modal,
   TextInput,
   ActivityIndicator,
+  Image,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, rounded, shadows } from '../theme/colors';
+import * as ImagePicker from 'expo-image-picker';
+import { colors, rounded } from '../theme/colors';
 import { memberService } from '../database/services/memberService';
 import { measurementService } from '../database/services/measurementService';
 import { workoutService } from '../database/services/workoutService';
@@ -33,13 +38,82 @@ import {
 } from '../types';
 import { useGymStore } from '../store/useGymStore';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'MemberProfile'>;
+const TOP_BAR_BG = require('../../public/top_bar.webp');
+const PLACEHOLDER_COLOR = '#8B9E93';
+const TITLE_OPTIONS = ['Mr.', 'Ms.', 'Mrs.', 'Coach', 'Trainer', 'Dr.'];
 
+export type HeightUnit = 'cm' | 'm' | 'mm' | 'ft' | 'in';
+
+export const convertHeightToCm = (val: number, unit: HeightUnit): number => {
+  if (!val || val <= 0 || isNaN(val)) return 0;
+  switch (unit) {
+    case 'm': return Math.round(val * 100 * 10) / 10;
+    case 'mm': return Math.round((val / 10) * 10) / 10;
+    case 'ft': return Math.round(val * 30.48 * 10) / 10;
+    case 'in': return Math.round(val * 2.54 * 10) / 10;
+    case 'cm':
+    default: return Math.round(val * 10) / 10;
+  }
+};
+
+export interface BMICategoryInfo {
+  category: 'Underweight' | 'Healthy weight' | 'Overweight' | 'Obesity';
+  range: string;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  progressRatio: number; // 0 to 1 for visual scale positioning
+}
+
+export const getBMICategory = (bmi?: number): BMICategoryInfo | null => {
+  if (!bmi || bmi <= 0) return null;
+  if (bmi < 18.5) {
+    return {
+      category: 'Underweight',
+      range: 'Under 18.5',
+      color: '#2563EB',      // Blue
+      bgColor: '#DBEAFE',    // Soft Blue
+      borderColor: '#93C5FD',
+      progressRatio: Math.min(Math.max((bmi / 35), 0.05), 0.24),
+    };
+  }
+  if (bmi <= 24.9) {
+    return {
+      category: 'Healthy weight',
+      range: '18.5 to 24.9',
+      color: '#059669',      // Green
+      bgColor: '#D1FAE5',    // Soft Green
+      borderColor: '#6EE7B7',
+      progressRatio: Math.min(Math.max(0.25 + ((bmi - 18.5) / (24.9 - 18.5)) * 0.25, 0.26), 0.49),
+    };
+  }
+  if (bmi <= 29.9) {
+    return {
+      category: 'Overweight',
+      range: '25 to 29.9',
+      color: '#D97706',      // Yellow / Amber
+      bgColor: '#FEF3C7',    // Soft Yellow
+      borderColor: '#FCD34D',
+      progressRatio: Math.min(Math.max(0.50 + ((bmi - 25) / (29.9 - 25)) * 0.25, 0.51), 0.74),
+    };
+  }
+  return {
+    category: 'Obesity',
+    range: '30 and above',
+    color: '#DC2626',        // Red
+    bgColor: '#FEE2E2',      // Soft Red
+    borderColor: '#FCA5A5',
+    progressRatio: Math.min(Math.max(0.75 + ((bmi - 30) / 10) * 0.25, 0.76), 0.96),
+  };
+};
+
+type Props = NativeStackScreenProps<RootStackParamList, 'MemberProfile'>;
 type TabType = 'info' | 'progress' | 'workouts' | 'payments' | 'visits';
 
 export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { memberId } = route.params;
-  const { selectedLocation } = useGymStore();
+  const { selectedLocation, refreshDashboard } = useGymStore();
 
   const [activeTab, setActiveTab] = useState<TabType>('info');
   const [member, setMember] = useState<Member | null>(null);
@@ -51,8 +125,33 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
   const [customFields, setCustomFields] = useState<CustomMeasurementField[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Unit Preferences State (custom select units for progress view)
+  const [measUnitWeight, setMeasUnitWeight] = useState<'kg' | 'lbs'>('kg');
+  const [measUnitHeight, setMeasUnitHeight] = useState<HeightUnit>('cm');
+  const [measUnitCircumference, setMeasUnitCircumference] = useState<'cm' | 'in'>('cm');
+
+  // Edit Mode State
+  const [isEditing, setIsEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState('Mr.');
+  const [editName, setEditName] = useState('');
+  const [editPhotoUri, setEditPhotoUri] = useState<string | null>(null);
+  const [editAge, setEditAge] = useState('');
+  const [editGender, setEditGender] = useState<'male' | 'female' | 'other'>('male');
+  const [editDob, setEditDob] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editEmergencyContact, setEditEmergencyContact] = useState('');
+  const [editInjuries, setEditInjuries] = useState('');
+  const [editFitnessGoals, setEditFitnessGoals] = useState('');
+  const [editStatus, setEditStatus] = useState<'active' | 'inactive'>('active');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+
   // New Measurement Modal State
   const [showMeasModal, setShowMeasModal] = useState(false);
+  const [inputWeightUnit, setInputWeightUnit] = useState<'kg' | 'lbs'>('kg');
+  const [inputHeightUnit, setInputHeightUnit] = useState<HeightUnit>('cm');
+  const [inputCircumferenceUnit, setInputCircumferenceUnit] = useState<'cm' | 'in'>('cm');
   const [measWeight, setMeasWeight] = useState('');
   const [measHeight, setMeasHeight] = useState('');
   const [measChest, setMeasChest] = useState('');
@@ -61,16 +160,16 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
   const [measCustomValues, setMeasCustomValues] = useState<Record<string, string>>({});
   const [measNotes, setMeasNotes] = useState('');
 
+  // Inline Custom Field creation inside Measurement Modal (No + icon)
+  const [showInlineCustomField, setShowInlineCustomField] = useState(false);
+  const [inlineFieldName, setInlineFieldName] = useState('');
+  const [inlineFieldUnit, setInlineFieldUnit] = useState('cm');
+
   // New Payment Modal State
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [payAmount, setPayAmount] = useState('');
   const [payPeriodLabel, setPayPeriodLabel] = useState('');
   const [payType, setPayType] = useState<'monthly' | 'yearly'>('monthly');
-
-  // New Custom Field Modal
-  const [showCustomFieldModal, setShowCustomFieldModal] = useState(false);
-  const [newFieldName, setNewFieldName] = useState('');
-  const [newFieldUnit, setNewFieldUnit] = useState('cm');
 
   useEffect(() => {
     loadAllMemberData();
@@ -97,9 +196,20 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
       setCheckIns(visits);
       setCustomFields(cFields);
 
-      // Default height from latest measurement if available
-      if (measList.length > 0) {
-        setMeasHeight(measList[0].height.toString());
+      if (m) {
+        setEditTitle(m.title || 'Mr.');
+        setEditName(m.name || '');
+        setEditPhotoUri(m.photo_uri || null);
+        setEditAge(m.age ? String(m.age) : '');
+        setEditGender(m.gender || 'male');
+        setEditDob(m.dob || '');
+        setEditPhone(m.phone || '');
+        setEditEmail(m.email || '');
+        setEditAddress(m.address || '');
+        setEditEmergencyContact(m.emergency_contact || '');
+        setEditInjuries(m.injuries || '');
+        setEditFitnessGoals(m.fitness_goals || '');
+        setEditStatus(m.status || 'active');
       }
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to load member profile');
@@ -108,54 +218,212 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
-  const handleSaveMeasurement = async () => {
-    const weightNum = parseFloat(measWeight);
-    const heightNum = parseFloat(measHeight);
+  const formatWeight = (valKg?: number) => {
+    if (!valKg || valKg <= 0) return null;
+    if (measUnitWeight === 'lbs') {
+      const lbs = Math.round(valKg * 2.20462 * 10) / 10;
+      return `${lbs} lbs`;
+    }
+    return `${valKg} kg`;
+  };
 
-    if (isNaN(weightNum) || isNaN(heightNum) || weightNum <= 0 || heightNum <= 0) {
-      Alert.alert('Invalid Input', 'Please enter valid numbers for weight and height.');
+  const formatHeight = (valCm?: number) => {
+    if (!valCm || valCm <= 0) return null;
+    switch (measUnitHeight) {
+      case 'm': {
+        const m = Math.round((valCm / 100) * 100) / 100;
+        return `${m} m`;
+      }
+      case 'mm': {
+        const mm = Math.round(valCm * 10);
+        return `${mm} mm`;
+      }
+      case 'ft': {
+        const ft = Math.round((valCm / 30.48) * 100) / 100;
+        return `${ft} ft`;
+      }
+      case 'in': {
+        const inches = Math.round((valCm / 2.54) * 10) / 10;
+        return `${inches} in`;
+      }
+      case 'cm':
+      default:
+        return `${Math.round(valCm * 10) / 10} cm`;
+    }
+  };
+
+  const formatCircumference = (valCm?: number) => {
+    if (!valCm || valCm <= 0) return null;
+    if (measUnitCircumference === 'in') {
+      const inches = Math.round((valCm / 2.54) * 10) / 10;
+      return `${inches} in`;
+    }
+    return `${Math.round(valCm * 10) / 10} cm`;
+  };
+
+  const getLiveModalBMI = () => {
+    const rawW = parseFloat(measWeight);
+    const rawH = parseFloat(measHeight);
+    if (isNaN(rawW) || rawW <= 0 || isNaN(rawH) || rawH <= 0) return null;
+    const wKg = inputWeightUnit === 'lbs' ? rawW / 2.20462 : rawW;
+    const hCm = convertHeightToCm(rawH, inputHeightUnit);
+    if (hCm <= 0) return null;
+    const hM = hCm / 100;
+    const val = wKg / (hM * hM);
+    return Math.round(val * 10) / 10;
+  };
+
+  const resetMeasurementForm = () => {
+    setMeasWeight('');
+    setMeasHeight('');
+    setMeasChest('');
+    setMeasArms('');
+    setMeasWaist('');
+    setMeasNotes('');
+    setMeasCustomValues({});
+    setShowInlineCustomField(false);
+    setInlineFieldName('');
+    setInlineFieldUnit('cm');
+    setInputWeightUnit(measUnitWeight);
+    setInputHeightUnit(measUnitHeight);
+    setInputCircumferenceUnit(measUnitCircumference);
+  };
+
+  const handlePickAvatar = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Needed', 'Please allow photo library access to change profile photo.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets[0]) {
+        const pickedUri = result.assets[0].uri;
+        setEditPhotoUri(pickedUri);
+        if (!isEditing) {
+          setIsEditing(true);
+        }
+      }
+    } catch {
+      Alert.alert('Error', 'Could not open photo library.');
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editName.trim()) {
+      Alert.alert('Required', 'Please enter member full name.');
       return;
     }
 
+    setIsSavingEdit(true);
     try {
+      await memberService.updateMember(memberId, {
+        title: editTitle || undefined,
+        name: editName.trim(),
+        photo_uri: editPhotoUri || undefined,
+        age: editAge ? parseInt(editAge, 10) : undefined,
+        gender: editGender,
+        dob: editDob.trim() || undefined,
+        phone: editPhone.trim() || undefined,
+        email: editEmail.trim() || undefined,
+        address: editAddress.trim() || undefined,
+        emergency_contact: editEmergencyContact.trim() || undefined,
+        injuries: editInjuries.trim() || undefined,
+        fitness_goals: editFitnessGoals.trim() || undefined,
+        status: editStatus,
+      });
+
+      await loadAllMemberData();
+      await refreshDashboard();
+      setIsEditing(false);
+      Alert.alert('Success', 'Member details updated successfully.');
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'Failed to update member profile');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // Height and weight are NOT required as requested; normalize input units to metric for database & standard BMI
+  const handleSaveMeasurement = async () => {
+    const rawWeight = parseFloat(measWeight);
+    const rawHeight = parseFloat(measHeight);
+    const rawChest = measChest ? parseFloat(measChest) : undefined;
+    const rawArms = measArms ? parseFloat(measArms) : undefined;
+    const rawWaist = measWaist ? parseFloat(measWaist) : undefined;
+
+    const weightNum = !isNaN(rawWeight) && rawWeight > 0
+      ? (inputWeightUnit === 'lbs' ? Math.round((rawWeight / 2.20462) * 10) / 10 : rawWeight)
+      : 0;
+
+    const heightNum = !isNaN(rawHeight) && rawHeight > 0
+      ? convertHeightToCm(rawHeight, inputHeightUnit)
+      : 0;
+
+    const chestNum = rawChest !== undefined
+      ? (inputCircumferenceUnit === 'in' ? Math.round(rawChest * 2.54 * 10) / 10 : rawChest)
+      : undefined;
+
+    const armsNum = rawArms !== undefined
+      ? (inputCircumferenceUnit === 'in' ? Math.round(rawArms * 2.54 * 10) / 10 : rawArms)
+      : undefined;
+
+    const waistNum = rawWaist !== undefined
+      ? (inputCircumferenceUnit === 'in' ? Math.round(rawWaist * 2.54 * 10) / 10 : rawWaist)
+      : undefined;
+
+    try {
+      // Filter non-empty custom values
+      const validCustomValues: Record<string, string> = {};
+      for (const [k, v] of Object.entries(measCustomValues)) {
+        if (v && v.trim()) validCustomValues[k] = v.trim();
+      }
+
       await measurementService.addMeasurement({
         member_id: memberId,
         date: new Date().toISOString().split('T')[0],
         weight: weightNum,
         height: heightNum,
-        chest: measChest ? parseFloat(measChest) : undefined,
-        arms: measArms ? parseFloat(measArms) : undefined,
-        waist: measWaist ? parseFloat(measWaist) : undefined,
-        custom_values: measCustomValues,
+        chest: chestNum,
+        arms: armsNum,
+        waist: waistNum,
+        custom_values: Object.keys(validCustomValues).length > 0 ? validCustomValues : undefined,
         notes: measNotes.trim() || undefined,
       });
 
       setShowMeasModal(false);
-      setMeasWeight('');
-      setMeasChest('');
-      setMeasArms('');
-      setMeasWaist('');
-      setMeasNotes('');
-      setMeasCustomValues({});
+      resetMeasurementForm();
       loadAllMemberData();
-      Alert.alert('Saved', 'Measurement recorded with auto-calculated BMI.');
+      Alert.alert('Saved', 'Measurement recorded successfully.');
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to record measurement');
     }
   };
 
-  const handleCreateCustomField = async () => {
-    if (!selectedLocation || !newFieldName.trim()) return;
+  const handleCreateInlineCustomField = async () => {
+    if (!selectedLocation || !inlineFieldName.trim()) {
+      Alert.alert('Required', 'Please enter a metric name');
+      return;
+    }
     try {
-      await measurementService.createCustomField(selectedLocation.id, newFieldName, newFieldUnit);
-      setShowCustomFieldModal(false);
-      setNewFieldName('');
+      await measurementService.createCustomField(
+        selectedLocation.id,
+        inlineFieldName.trim(),
+        inlineFieldUnit.trim() || 'cm'
+      );
+      setInlineFieldName('');
+      setShowInlineCustomField(false);
       if (selectedLocation) {
         const updated = await measurementService.getCustomFields(selectedLocation.id);
         setCustomFields(updated);
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Could not add custom field');
+      Alert.alert('Error', e.message || 'Could not add custom metric');
     }
   };
 
@@ -223,567 +491,1227 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+  // Formatting display name avoiding duplicate title
+  const rawTitle = member.title?.trim() || '';
+  const rawName = member.name.trim();
+  const displayName =
+    rawTitle && !rawName.toLowerCase().startsWith(rawTitle.toLowerCase())
+      ? `${rawTitle} ${rawName}`
+      : rawName;
 
-      {/* Profile Header */}
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+  const currentAvatar = isEditing ? (editPhotoUri || member.photo_uri) : member.photo_uri;
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={styles.container}
+    >
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+
+      {/* ── TOP HERO WITH CURVED ARC (Fixed header, exact same as Profile Screen) ── */}
+      <View style={styles.fixedHeaderWrap}>
+        <View style={[styles.heroFoliageContainer, { minHeight: 180 + insets.top }]}>
+          <ImageBackground
+            source={TOP_BAR_BG}
+            style={[styles.foliageBg, { minHeight: 180 + insets.top }]}
+            imageStyle={styles.foliageImage}
+            resizeMode="cover"
+          >
+            <View style={[styles.foliageOverlay, { paddingTop: insets.top + 16, minHeight: 180 + insets.top }]}>
+              <Text style={styles.foliageBrandTitle}>GripState</Text>
+              <View style={styles.foliageDivider} />
+              <Text style={styles.foliageBrandSubtitle} numberOfLines={1}>
+                {isEditing ? 'Editing Member Profile' : 'The professional gym management platform.'}
+              </Text>
+            </View>
+          </ImageBackground>
+
+          {/* Left Back Button */}
+          <TouchableOpacity
+            style={[styles.topLeftBackBtn, { top: insets.top + 12 }]}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.8}
+            accessibilityLabel="Back"
+          >
             <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Member Profile</Text>
-          <View style={{ width: 36 }} />
-        </View>
 
-        <View style={styles.memberBriefRow}>
-          <View style={styles.avatarLarge}>
-            <Text style={styles.avatarLargeText}>{member.name.charAt(0).toUpperCase()}</Text>
-          </View>
-          <View style={{ flex: 1, marginLeft: 16 }}>
-            <Text style={styles.briefName}>{member.name}</Text>
-            <Text style={styles.briefContact}>{member.phone || member.email || 'No contact'}</Text>
-            <View style={styles.briefPillRow}>
-              <View style={styles.briefStatusPill}>
-                <Text style={styles.briefStatusText}>{member.status.toUpperCase()}</Text>
+          {/* Right Edit / Cancel Toggle Button */}
+          <TouchableOpacity
+            style={[styles.topRightEditBtn, { top: insets.top + 12 }]}
+            onPress={() => {
+              if (isEditing) {
+                // Cancel changes
+                setEditTitle(member.title || 'Mr.');
+                setEditName(member.name || '');
+                setEditPhotoUri(member.photo_uri || null);
+                setEditAge(member.age ? String(member.age) : '');
+                setEditGender(member.gender || 'male');
+                setEditDob(member.dob || '');
+                setEditPhone(member.phone || '');
+                setEditEmail(member.email || '');
+                setEditAddress(member.address || '');
+                setEditEmergencyContact(member.emergency_contact || '');
+                setEditInjuries(member.injuries || '');
+                setEditFitnessGoals(member.fitness_goals || '');
+                setEditStatus(member.status || 'active');
+                setIsEditing(false);
+              } else {
+                setActiveTab('info');
+                setIsEditing(true);
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name={isEditing ? 'close' : 'create-outline'} size={16} color="#FFFFFF" />
+            <Text style={styles.topRightEditBtnText}>{isEditing ? 'Cancel' : 'Edit'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* ── SCROLLABLE BODY CONTENT (Clean Flat UI without box containers or bottom line) ── */}
+      <ScrollView
+        style={styles.scrollContainer}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 28 }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.cleanBody}>
+          {/* Profile Header Avatar & Summary Block */}
+          <View style={styles.profileHeaderBlock}>
+            <TouchableOpacity
+              style={styles.profileAvatarBox}
+              onPress={handlePickAvatar}
+              activeOpacity={0.85}
+            >
+              {currentAvatar ? (
+                <Image source={{ uri: currentAvatar }} style={styles.profileAvatarImage} />
+              ) : (
+                <Text style={styles.profileAvatarInitial}>
+                  {displayName.charAt(0).toUpperCase()}
+                </Text>
+              )}
+              {/* Camera Badge */}
+              <View style={styles.profileAvatarCameraBadge}>
+                <Ionicons name="camera" size={13} color="#FFFFFF" />
               </View>
+            </TouchableOpacity>
+
+            <Text style={styles.profileNameTitle}>{displayName}</Text>
+            <Text style={styles.profileSubContact}>
+              {member.phone || member.email || 'No direct contact registered'}
+            </Text>
+
+            {/* Status & Goals Row */}
+            <View style={styles.headerPillsRow}>
+              <View
+                style={[
+                  styles.statusBadge,
+                  member.status === 'active' ? styles.statusBadgeActive : styles.statusBadgeInactive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusBadgeText,
+                    member.status === 'active' ? styles.statusBadgeTextActive : styles.statusBadgeTextInactive,
+                  ]}
+                >
+                  {member.status.toUpperCase()}
+                </Text>
+              </View>
+
               {member.fitness_goals ? (
-                <View style={styles.goalPill}>
-                  <Text style={styles.goalText} numberOfLines={1}>{member.fitness_goals}</Text>
+                <View style={styles.goalBadge}>
+                  <Text style={styles.goalBadgeText} numberOfLines={1}>
+                    🎯 {member.fitness_goals}
+                  </Text>
                 </View>
               ) : null}
             </View>
-          </View>
-        </View>
 
-        {/* Tab Navigation Bar */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll}>
-          {(
-            [
-              { id: 'info', label: 'Info' },
-              { id: 'progress', label: 'Progress' },
-              { id: 'workouts', label: 'Workouts' },
-              { id: 'payments', label: 'Payments' },
-              { id: 'visits', label: 'Visits' },
-            ] as const
-          ).map((t) => (
-            <TouchableOpacity
-              key={t.id}
-              style={[styles.tabItem, activeTab === t.id && styles.tabItemActive]}
-              onPress={() => setActiveTab(t.id)}
-            >
-              <Text style={[styles.tabLabel, activeTab === t.id && styles.tabLabelActive]}>
-                {t.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* Tab Body */}
-      <ScrollView contentContainerStyle={styles.bodyContent}>
-        {/* TAB 1: INFO */}
-        {activeTab === 'info' && (
-          <View style={styles.tabContent}>
-            <View style={styles.card}>
-              <Text style={styles.cardHeader}>Personal Details</Text>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Age / Gender</Text>
-                <Text style={styles.infoValue}>
-                  {member.age ? `${member.age} yrs` : 'N/A'} • {member.gender || 'Not specified'}
+            {/* Active Branch Display */}
+            <View style={styles.locationSelectorCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.locationSelectorLabel}>REGISTERED BRANCH</Text>
+                <Text style={styles.locationSelectorValue} numberOfLines={1}>
+                  {selectedLocation?.name || 'Main Branch'}
                 </Text>
               </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Date of Birth</Text>
-                <Text style={styles.infoValue}>{member.dob || 'Not specified'}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Address</Text>
-                <Text style={styles.infoValue}>{member.address || 'N/A'}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Emergency Contact</Text>
-                <Text style={styles.infoValue}>{member.emergency_contact || 'None registered'}</Text>
-              </View>
-            </View>
-
-            <View style={styles.card}>
-              <Text style={styles.cardHeader}>Health & Fitness Focus</Text>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Fitness Goals</Text>
-                <Text style={styles.infoValue}>{member.fitness_goals || 'General Health'}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Injuries / Limitations</Text>
-                <Text style={[styles.infoValue, { color: member.injuries ? colors.danger : colors.textPrimary }]}>
-                  {member.injuries || 'None reported'}
-                </Text>
+              <View style={styles.branchTagBadge}>
+                <Text style={styles.branchTagBadgeText}>Gym Member</Text>
               </View>
             </View>
           </View>
-        )}
 
-        {/* TAB 2: PROGRESS (Time-series measurements + auto-BMI) */}
-        {activeTab === 'progress' && (
-          <View style={styles.tabContent}>
-            <View style={styles.actionHeaderRow}>
+          {/* Tab Navigation Bar */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.categoryTabsContainer}
+            contentContainerStyle={styles.categoryTabsContent}
+          >
+            {(
+              [
+                { id: 'info', label: isEditing ? 'Edit Profile' : 'Info' },
+                { id: 'progress', label: 'Progress' },
+                { id: 'workouts', label: 'Workouts' },
+                { id: 'payments', label: 'Payments' },
+                { id: 'visits', label: 'Visits' },
+              ] as const
+            ).map((t) => (
               <TouchableOpacity
-                style={styles.actionBtnSecondary}
-                onPress={() => setShowCustomFieldModal(true)}
+                key={t.id}
+                style={[styles.categoryTabItem, activeTab === t.id && styles.categoryTabItemActive]}
+                onPress={() => setActiveTab(t.id)}
+                activeOpacity={0.7}
               >
-                <Ionicons name="options-outline" size={16} color={colors.primary} />
-                <Text style={styles.actionBtnSecondaryText}>+ Custom Field</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.actionBtnPrimary}
-                onPress={() => setShowMeasModal(true)}
-              >
-                <Ionicons name="add" size={18} color="#FFFFFF" />
-                <Text style={styles.actionBtnPrimaryText}>New Measurement</Text>
-              </TouchableOpacity>
-            </View>
-
-            {measurements.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Ionicons name="fitness-outline" size={40} color={colors.textMuted} />
-                <Text style={styles.emptyTitle}>No measurements recorded</Text>
-                <Text style={styles.emptySubtitle}>
-                  Track weight, height, BMI, chest, waist, and custom dimensions over time.
+                <Text
+                  style={[
+                    styles.categoryTabText,
+                    activeTab === t.id && styles.categoryTabTextActive,
+                  ]}
+                >
+                  {t.label}
                 </Text>
-              </View>
-            ) : (
-              measurements.map((meas, idx) => (
-                <View key={meas.id} style={styles.measurementCard}>
-                  <View style={styles.measHeader}>
-                    <Text style={styles.measDate}>📅 {meas.date}</Text>
-                    <View style={styles.bmiBadge}>
-                      <Text style={styles.bmiBadgeText}>BMI: {meas.bmi}</Text>
+                {activeTab === t.id && <View style={styles.categoryTabIndicator} />}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* ════ TAB 1: INFO (FLAT UI, NO CONTAINER BOXES) ════ */}
+          {activeTab === 'info' && (
+            <View style={styles.tabContent}>
+              {isEditing ? (
+                /* EDIT MODE FORM */
+                <View style={styles.fieldsSection}>
+                  <Text style={styles.sectionHeading}>Edit Member Details</Text>
+
+                  {/* Salutation / Title */}
+                  <Text style={styles.inputLabel}>Salutation / Title</Text>
+                  <View style={styles.titleChipRow}>
+                    {TITLE_OPTIONS.map((t) => (
+                      <TouchableOpacity
+                        key={t}
+                        style={[styles.titleChip, editTitle === t && styles.titleChipActive]}
+                        onPress={() => setEditTitle(t)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.titleChipText, editTitle === t && styles.titleChipTextActive]}>
+                          {t}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Full Name */}
+                  <Text style={styles.inputLabel}>Full Name *</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. Sarah Jenkins"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      value={editName}
+                      onChangeText={setEditName}
+                      autoCapitalize="words"
+                    />
+                  </View>
+
+                  {/* Age & Gender Row */}
+                  <View style={styles.rowInputs}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Age</Text>
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          style={styles.textInput}
+                          placeholder="e.g. 28"
+                          placeholderTextColor={PLACEHOLDER_COLOR}
+                          keyboardType="numeric"
+                          value={editAge}
+                          onChangeText={setEditAge}
+                        />
+                      </View>
+                    </View>
+
+                    <View style={{ flex: 1.5, marginLeft: 12 }}>
+                      <Text style={styles.inputLabel}>Gender</Text>
+                      <View style={styles.genderRow}>
+                        {(['male', 'female', 'other'] as const).map((g) => (
+                          <TouchableOpacity
+                            key={g}
+                            style={[styles.genderBtn, editGender === g && styles.genderBtnActive]}
+                            onPress={() => setEditGender(g)}
+                            activeOpacity={0.8}
+                          >
+                            <Text
+                              style={[
+                                styles.genderBtnText,
+                                editGender === g && styles.genderBtnTextActive,
+                              ]}
+                            >
+                              {g === 'male' ? 'Male' : g === 'female' ? 'Female' : 'Other'}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
                   </View>
 
-                  <View style={styles.measGrid}>
-                    <View style={styles.measCol}>
-                      <Text style={styles.measParamLabel}>Weight</Text>
-                      <Text style={styles.measParamVal}>{meas.weight} kg</Text>
-                    </View>
-                    <View style={styles.measCol}>
-                      <Text style={styles.measParamLabel}>Height</Text>
-                      <Text style={styles.measParamVal}>{meas.height} cm</Text>
-                    </View>
-                    {meas.chest ? (
-                      <View style={styles.measCol}>
-                        <Text style={styles.measParamLabel}>Chest</Text>
-                        <Text style={styles.measParamVal}>{meas.chest} cm</Text>
-                      </View>
-                    ) : null}
-                    {meas.waist ? (
-                      <View style={styles.measCol}>
-                        <Text style={styles.measParamLabel}>Waist</Text>
-                        <Text style={styles.measParamVal}>{meas.waist} cm</Text>
-                      </View>
-                    ) : null}
-                    {meas.arms ? (
-                      <View style={styles.measCol}>
-                        <Text style={styles.measParamLabel}>Arms</Text>
-                        <Text style={styles.measParamVal}>{meas.arms} cm</Text>
-                      </View>
-                    ) : null}
+                  {/* Date of Birth */}
+                  <Text style={styles.inputLabel}>Date of Birth</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. 1995-04-12"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      value={editDob}
+                      onChangeText={setEditDob}
+                    />
                   </View>
 
-                  {/* Dynamic Custom Measurement values */}
-                  {meas.custom_values && Object.keys(meas.custom_values).length > 0 && (
-                    <View style={styles.customValuesBox}>
-                      {Object.entries(meas.custom_values).map(([fieldName, val]) => (
-                        <View key={fieldName} style={styles.customPill}>
-                          <Text style={styles.customPillLabel}>{fieldName}:</Text>
-                          <Text style={styles.customPillVal}>{String(val)}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
+                  {/* Phone */}
+                  <Text style={styles.inputLabel}>Phone Number</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. +1 (555) 019-2834"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      keyboardType="phone-pad"
+                      value={editPhone}
+                      onChangeText={setEditPhone}
+                    />
+                  </View>
+
+                  {/* Email */}
+                  <Text style={styles.inputLabel}>Email Address</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. sarah@example.com"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      value={editEmail}
+                      onChangeText={setEditEmail}
+                    />
+                  </View>
+
+                  {/* Address */}
+                  <Text style={styles.inputLabel}>Home Address</Text>
+                  <View style={[styles.inputWrap, styles.textAreaWrap]}>
+                    <TextInput
+                      style={[styles.textInput, styles.textAreaInput]}
+                      placeholder="e.g. Apt 4B, 12 Park Avenue"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      multiline
+                      value={editAddress}
+                      onChangeText={setEditAddress}
+                    />
+                  </View>
+
+                  {/* Emergency Contact */}
+                  <Text style={styles.inputLabel}>Emergency Contact</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. John (Spouse) - 555-0199"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      value={editEmergencyContact}
+                      onChangeText={setEditEmergencyContact}
+                    />
+                  </View>
+
+                  {/* Fitness Goals */}
+                  <Text style={styles.inputLabel}>Fitness Goals</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. Weight Loss, Muscle Building, Mobility"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      value={editFitnessGoals}
+                      onChangeText={setEditFitnessGoals}
+                    />
+                  </View>
+
+                  {/* Injuries / Limitations */}
+                  <Text style={styles.inputLabel}>Prior Injuries / Medical Conditions</Text>
+                  <View style={[styles.inputWrap, styles.textAreaWrap]}>
+                    <TextInput
+                      style={[styles.textInput, styles.textAreaInput]}
+                      placeholder="e.g. Lower back strain, right knee surgery..."
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      multiline
+                      value={editInjuries}
+                      onChangeText={setEditInjuries}
+                    />
+                  </View>
+
+                  {/* Status Toggle */}
+                  <Text style={styles.inputLabel}>Membership Status</Text>
+                  <View style={styles.statusToggleRow}>
+                    <TouchableOpacity
+                      style={[styles.statusToggleBtn, editStatus === 'active' && styles.statusToggleBtnActive]}
+                      onPress={() => setEditStatus('active')}
+                    >
+                      <Text
+                        style={[
+                          styles.statusToggleBtnText,
+                          editStatus === 'active' && styles.statusToggleBtnTextActive,
+                        ]}
+                      >
+                        Active
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.statusToggleBtn, editStatus === 'inactive' && styles.statusToggleBtnInactive]}
+                      onPress={() => setEditStatus('inactive')}
+                    >
+                      <Text
+                        style={[
+                          styles.statusToggleBtnText,
+                          editStatus === 'inactive' && styles.statusToggleBtnTextActive,
+                        ]}
+                      >
+                        Inactive
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Action Buttons */}
+                  <TouchableOpacity
+                    style={styles.saveActionBtn}
+                    onPress={handleSaveEdit}
+                    disabled={isSavingEdit}
+                    activeOpacity={0.85}
+                  >
+                    {isSavingEdit ? (
+                      <ActivityIndicator color="#FFFFFF" />
+                    ) : (
+                      <Text style={styles.saveActionBtnText}>SAVE PROFILE CHANGES</Text>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.cancelActionBtn}
+                    onPress={() => setIsEditing(false)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.cancelActionBtnText}>Cancel</Text>
+                  </TouchableOpacity>
                 </View>
-              ))
-            )}
-          </View>
-        )}
+              ) : (
+                /* READ-ONLY VIEW (CLEAN FLAT ROWS, NO CONTAINER CARDS) */
+                <View>
+                  <View style={styles.sectionHeaderRow}>
+                    <Text style={styles.sectionHeading}>Personal Details</Text>
+                    <TouchableOpacity
+                      style={styles.inlineEditBtn}
+                      onPress={() => setIsEditing(true)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="create-outline" size={14} color={colors.primary} />
+                      <Text style={styles.inlineEditBtnText}>Edit Details</Text>
+                    </TouchableOpacity>
+                  </View>
 
-        {/* TAB 3: WORKOUT PLANS (Active & Expired) */}
-        {activeTab === 'workouts' && (
-          <View style={styles.tabContent}>
-            <View style={styles.actionHeaderRow}>
-              <Text style={styles.sectionHeaderTitle}>Assigned Routines</Text>
-              <TouchableOpacity
-                style={styles.actionBtnPrimary}
-                onPress={() => navigation.navigate('PlanBuilder', { memberId })}
-              >
-                <Ionicons name="barbell-outline" size={16} color="#FFFFFF" />
-                <Text style={styles.actionBtnPrimaryText}>Build New Plan</Text>
-              </TouchableOpacity>
-            </View>
+                  <View style={styles.flatRow}>
+                    <Text style={styles.flatLabel}>Salutation / Title</Text>
+                    <Text style={styles.flatValue}>{member.title || 'Not specified'}</Text>
+                  </View>
 
-            {/* Currently Active Routine */}
-            {activePlan ? (
-              <View style={styles.activePlanCard}>
-                <View style={styles.planHeaderRow}>
-                  <View style={{ flex: 1 }}>
-                    <View style={styles.activeRoutinePill}>
-                      <Text style={styles.activeRoutinePillText}>ACTIVE WORKOUT</Text>
-                    </View>
-                    <Text style={styles.planTitle}>{activePlan.title}</Text>
-                    <Text style={styles.planDates}>
-                      {activePlan.start_date} → {activePlan.end_date}
+                  <View style={styles.flatRow}>
+                    <Text style={styles.flatLabel}>Full Name</Text>
+                    <Text style={styles.flatValue}>{member.name}</Text>
+                  </View>
+
+                  <View style={styles.flatRow}>
+                    <Text style={styles.flatLabel}>Age / Gender</Text>
+                    <Text style={styles.flatValue}>
+                      {member.age ? `${member.age} yrs` : 'N/A'} • {member.gender ? member.gender.charAt(0).toUpperCase() + member.gender.slice(1) : 'Not specified'}
                     </Text>
                   </View>
+
+                  <View style={styles.flatRow}>
+                    <Text style={styles.flatLabel}>Date of Birth</Text>
+                    <Text style={styles.flatValue}>{member.dob || 'Not specified'}</Text>
+                  </View>
+
+                  <View style={styles.flatRow}>
+                    <Text style={styles.flatLabel}>Phone Number</Text>
+                    <Text style={styles.flatValue}>{member.phone || 'N/A'}</Text>
+                  </View>
+
+                  <View style={styles.flatRow}>
+                    <Text style={styles.flatLabel}>Email Address</Text>
+                    <Text style={styles.flatValue}>{member.email || 'N/A'}</Text>
+                  </View>
+
+                  <View style={styles.flatRow}>
+                    <Text style={styles.flatLabel}>Home Address</Text>
+                    <Text style={styles.flatValue}>{member.address || 'N/A'}</Text>
+                  </View>
+
+                  <View style={styles.flatRow}>
+                    <Text style={styles.flatLabel}>Emergency Contact</Text>
+                    <Text style={styles.flatValue}>{member.emergency_contact || 'None registered'}</Text>
+                  </View>
+
+                  <View style={[styles.sectionHeaderRow, { marginTop: 20 }]}>
+                    <Text style={styles.sectionHeading}>Health & Fitness Focus</Text>
+                  </View>
+
+                  <View style={styles.flatRow}>
+                    <Text style={styles.flatLabel}>Fitness Goals</Text>
+                    <Text style={styles.flatValue}>{member.fitness_goals || 'General Fitness'}</Text>
+                  </View>
+
+                  <View style={styles.flatRow}>
+                    <Text style={styles.flatLabel}>Injuries / Limitations</Text>
+                    <Text style={[styles.flatValue, { color: member.injuries ? colors.danger : colors.textPrimary }]}>
+                      {member.injuries || 'None reported'}
+                    </Text>
+                  </View>
+
+                  {/* Primary Edit Button */}
+                  <TouchableOpacity
+                    style={styles.saveActionBtn}
+                    onPress={() => setIsEditing(true)}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="create-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+                    <Text style={styles.saveActionBtnText}>EDIT MEMBER DETAILS</Text>
+                  </TouchableOpacity>
                 </View>
+              )}
+            </View>
+          )}
 
-                {activePlan.notes ? (
-                  <Text style={styles.planNotesText}>Note: {activePlan.notes}</Text>
-                ) : null}
+          {/* ════ TAB 2: PROGRESS (FLAT UI, CUSTOM UNITS, BMI GRAPH & CATEGORIES) ════ */}
+          {activeTab === 'progress' && (
+            <View style={styles.tabContent}>
+              <View style={styles.actionHeaderRow}>
+                <Text style={styles.sectionHeading}>Measurements History</Text>
+                <TouchableOpacity
+                  style={styles.actionBtnPrimary}
+                  onPress={() => {
+                    resetMeasurementForm();
+                    setShowMeasModal(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="add" size={18} color="#FFFFFF" />
+                  <Text style={styles.actionBtnPrimaryText}>New Measurement</Text>
+                </TouchableOpacity>
+              </View>
 
-                {/* Exercises list in active plan */}
-                <View style={styles.exerciseList}>
-                  {(activePlan.exercises || []).map((ex, idx) => (
-                    <View key={ex.id} style={styles.exerciseItemRow}>
-                      <View style={styles.exerciseNum}>
-                        <Text style={styles.exerciseNumText}>{idx + 1}</Text>
+              {/* Custom Units Selector Bar */}
+              <View style={styles.unitToolbar}>
+                <View style={styles.unitToolbarLeft}>
+                  <Ionicons name="options-outline" size={15} color={colors.textSecondary} />
+                  <Text style={styles.unitToolbarTitle}>Units:</Text>
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.unitPillsRow}>
+                  {/* Weight Toggle */}
+                  <View style={styles.unitToggleGroup}>
+                    <TouchableOpacity
+                      style={[styles.unitTogglePill, measUnitWeight === 'kg' && styles.unitTogglePillActive]}
+                      onPress={() => setMeasUnitWeight('kg')}
+                    >
+                      <Text style={[styles.unitTogglePillText, measUnitWeight === 'kg' && styles.unitTogglePillTextActive]}>kg</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.unitTogglePill, measUnitWeight === 'lbs' && styles.unitTogglePillActive]}
+                      onPress={() => setMeasUnitWeight('lbs')}
+                    >
+                      <Text style={[styles.unitTogglePillText, measUnitWeight === 'lbs' && styles.unitTogglePillTextActive]}>lbs</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Height Toggle: cm, m, mm, ft, in */}
+                  <View style={styles.unitToggleGroup}>
+                    {(['cm', 'm', 'mm', 'ft', 'in'] as const).map((unit) => (
+                      <TouchableOpacity
+                        key={unit}
+                        style={[styles.unitTogglePill, measUnitHeight === unit && styles.unitTogglePillActive]}
+                        onPress={() => setMeasUnitHeight(unit)}
+                      >
+                        <Text style={[styles.unitTogglePillText, measUnitHeight === unit && styles.unitTogglePillTextActive]}>
+                          {unit}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+
+              {/* BMI Overview & Category Card (Line graph removed as requested) */}
+              {(() => {
+                const latestBmiMeas = measurements.find((m) => m.bmi && m.bmi > 0);
+                if (!latestBmiMeas || !latestBmiMeas.bmi) return null;
+                const bmiCat = getBMICategory(latestBmiMeas.bmi);
+                if (!bmiCat) return null;
+
+                return (
+                  <View style={styles.bmiGraphCard}>
+                    <View style={styles.bmiCardHeader}>
+                      <View>
+                        <Text style={styles.bmiCardTitle}>BMI & Health Category</Text>
+                        <Text style={styles.bmiCardDate}>Latest recorded: {latestBmiMeas.date}</Text>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.exerciseItemName}>{ex.exercise_name}</Text>
-                        <Text style={styles.exerciseItemMeta}>
-                          {ex.category} • {ex.sets} sets × {ex.reps} reps • Rest: {ex.rest_time}s
-                          {ex.target_weight ? ` • ${ex.target_weight}` : ''}
+                      <View style={[styles.bmiCategoryBadgeLarge, { backgroundColor: bmiCat.bgColor, borderColor: bmiCat.borderColor }]}>
+                        <View style={[styles.bmiCategoryDotLarge, { backgroundColor: bmiCat.color }]} />
+                        <Text style={[styles.bmiCategoryTextLarge, { color: bmiCat.color }]}>
+                          {bmiCat.category}
                         </Text>
                       </View>
                     </View>
-                  ))}
+
+                    <View style={styles.bmiScoreRow}>
+                      <Text style={styles.bmiScoreValue}>{latestBmiMeas.bmi}</Text>
+                      <Text style={styles.bmiScoreUnit}>BMI</Text>
+                      <Text style={[styles.bmiScoreCategoryLabel, { color: bmiCat.color }]}>
+                        • {bmiCat.category} ({bmiCat.range})
+                      </Text>
+                    </View>
+
+                    {/* Category Reference Cards with associated colors */}
+                    <View style={styles.bmiLegendRow}>
+                      <View style={[styles.bmiLegendItem, bmiCat.category === 'Underweight' && styles.bmiLegendItemHighlight]}>
+                        <View style={[styles.bmiLegendDot, { backgroundColor: '#2563EB' }]} />
+                        <Text style={styles.bmiLegendText}>Underweight</Text>
+                        <Text style={styles.bmiLegendRange}>&lt; 18.5</Text>
+                      </View>
+                      <View style={[styles.bmiLegendItem, bmiCat.category === 'Healthy weight' && styles.bmiLegendItemHighlight]}>
+                        <View style={[styles.bmiLegendDot, { backgroundColor: '#059669' }]} />
+                        <Text style={styles.bmiLegendText}>Healthy weight</Text>
+                        <Text style={styles.bmiLegendRange}>18.5–24.9</Text>
+                      </View>
+                      <View style={[styles.bmiLegendItem, bmiCat.category === 'Overweight' && styles.bmiLegendItemHighlight]}>
+                        <View style={[styles.bmiLegendDot, { backgroundColor: '#D97706' }]} />
+                        <Text style={styles.bmiLegendText}>Overweight</Text>
+                        <Text style={styles.bmiLegendRange}>25–29.9</Text>
+                      </View>
+                      <View style={[styles.bmiLegendItem, bmiCat.category === 'Obesity' && styles.bmiLegendItemHighlight]}>
+                        <View style={[styles.bmiLegendDot, { backgroundColor: '#DC2626' }]} />
+                        <Text style={styles.bmiLegendText}>Obesity</Text>
+                        <Text style={styles.bmiLegendRange}>≥ 30</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })()}
+
+              {measurements.length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="fitness-outline" size={40} color={colors.textMuted} />
+                  <Text style={styles.emptyTitle}>No measurements recorded</Text>
+                  <Text style={styles.emptySubtitle}>
+                    Track progress with weight, height, BMI, chest, waist, or custom metrics.
+                  </Text>
                 </View>
+              ) : (
+                measurements.map((meas) => {
+                  const bmiCat = meas.bmi && meas.bmi > 0 ? getBMICategory(meas.bmi) : null;
 
-                {/* Action Buttons: PDF Export & Calendar Sync */}
-                <View style={styles.planActionRow}>
-                  <TouchableOpacity
-                    style={styles.pdfExportBtn}
-                    onPress={() => handleExportPDF(activePlan)}
-                  >
-                    <Ionicons name="share-outline" size={18} color="#FFFFFF" />
-                    <Text style={styles.pdfExportBtnText}>Share / Print PDF</Text>
-                  </TouchableOpacity>
+                  return (
+                    <View key={meas.id} style={styles.flatMeasurementItem}>
+                      <View style={styles.measHeader}>
+                        <Text style={styles.measDateText}>{meas.date}</Text>
+                        {meas.bmi && meas.bmi > 0 ? (
+                          <View style={styles.bmiBadgeGroup}>
+                            <View style={styles.bmiBadge}>
+                              <Text style={styles.bmiBadgeText}>BMI: {meas.bmi}</Text>
+                            </View>
+                            {bmiCat && (
+                              <View style={[styles.bmiCategoryBadge, { backgroundColor: bmiCat.bgColor, borderColor: bmiCat.borderColor }]}>
+                                <View style={[styles.bmiCategoryDot, { backgroundColor: bmiCat.color }]} />
+                                <Text style={[styles.bmiCategoryText, { color: bmiCat.color }]}>
+                                  {bmiCat.category}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        ) : null}
+                      </View>
 
-                  <TouchableOpacity
-                    style={styles.calendarSyncBtn}
-                    onPress={() => handleSyncCalendar(activePlan)}
-                  >
-                    <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-                    <Text style={styles.calendarSyncBtnText}>Add Calendar</Text>
-                  </TouchableOpacity>
+                      <View style={styles.measGrid}>
+                        {meas.weight && meas.weight > 0 ? (
+                          <View style={styles.measCol}>
+                            <Text style={styles.measParamLabel}>Weight</Text>
+                            <Text style={styles.measParamVal}>{formatWeight(meas.weight)}</Text>
+                          </View>
+                        ) : null}
+                        {meas.height && meas.height > 0 ? (
+                          <View style={styles.measCol}>
+                            <Text style={styles.measParamLabel}>Height</Text>
+                            <Text style={styles.measParamVal}>{formatHeight(meas.height)}</Text>
+                          </View>
+                        ) : null}
+                        {meas.chest ? (
+                          <View style={styles.measCol}>
+                            <Text style={styles.measParamLabel}>Chest</Text>
+                            <Text style={styles.measParamVal}>{formatCircumference(meas.chest)}</Text>
+                          </View>
+                        ) : null}
+                        {meas.waist ? (
+                          <View style={styles.measCol}>
+                            <Text style={styles.measParamLabel}>Waist</Text>
+                            <Text style={styles.measParamVal}>{formatCircumference(meas.waist)}</Text>
+                          </View>
+                        ) : null}
+                        {meas.arms ? (
+                          <View style={styles.measCol}>
+                            <Text style={styles.measParamLabel}>Arms</Text>
+                            <Text style={styles.measParamVal}>{formatCircumference(meas.arms)}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+
+                      {/* Dynamic Custom Measurement values */}
+                      {meas.custom_values && Object.keys(meas.custom_values).length > 0 && (
+                        <View style={styles.customValuesBox}>
+                          {Object.entries(meas.custom_values).map(([fieldName, val]) => (
+                            <View key={fieldName} style={styles.customPill}>
+                              <Text style={styles.customPillLabel}>{fieldName}:</Text>
+                              <Text style={styles.customPillVal}>{String(val)}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
+                      {meas.notes ? (
+                        <Text style={styles.measNotesText}>Note: {meas.notes}</Text>
+                      ) : null}
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
+
+          {/* ════ TAB 3: WORKOUT PLANS (FLAT UI) ════ */}
+          {activeTab === 'workouts' && (
+            <View style={styles.tabContent}>
+              <View style={styles.actionHeaderRow}>
+                <Text style={styles.sectionHeading}>Assigned Routines</Text>
+                <TouchableOpacity
+                  style={styles.actionBtnPrimary}
+                  onPress={() => navigation.navigate('PlanBuilder', { memberId })}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="barbell-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.actionBtnPrimaryText}>Build New Plan</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Currently Active Routine */}
+              {activePlan ? (
+                <View style={styles.flatPlanBlock}>
+                  <View style={styles.planHeaderRow}>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.activeRoutinePill}>
+                        <Text style={styles.activeRoutinePillText}>ACTIVE WORKOUT</Text>
+                      </View>
+                      <Text style={styles.planTitle}>{activePlan.title}</Text>
+                      <Text style={styles.planDates}>
+                        {activePlan.start_date} → {activePlan.end_date}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {activePlan.notes ? (
+                    <Text style={styles.planNotesText}>Note: {activePlan.notes}</Text>
+                  ) : null}
+
+                  {/* Exercises list */}
+                  <View style={styles.exerciseList}>
+                    {(activePlan.exercises || []).map((ex, idx) => (
+                      <View key={ex.id} style={styles.exerciseItemRow}>
+                        <View style={styles.exerciseNum}>
+                          <Text style={styles.exerciseNumText}>{idx + 1}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.exerciseItemName}>{ex.exercise_name}</Text>
+                          <Text style={styles.exerciseItemMeta}>
+                            {ex.category} • {ex.sets} sets × {ex.reps} reps • Rest: {ex.rest_time}s
+                            {ex.target_weight ? ` • ${ex.target_weight}` : ''}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+
+                  {/* Actions */}
+                  <View style={styles.planActionRow}>
+                    <TouchableOpacity
+                      style={styles.pdfExportBtn}
+                      onPress={() => handleExportPDF(activePlan)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="share-outline" size={18} color="#FFFFFF" />
+                      <Text style={styles.pdfExportBtnText}>Share / Print PDF</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.calendarSyncBtn}
+                      onPress={() => handleSyncCalendar(activePlan)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="calendar-outline" size={18} color={colors.primary} />
+                      <Text style={styles.calendarSyncBtnText}>Add Calendar</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            ) : (
-              <View style={styles.emptyCard}>
-                <Ionicons name="barbell-outline" size={40} color={colors.textMuted} />
-                <Text style={styles.emptyTitle}>No active workout plan</Text>
-                <Text style={styles.emptySubtitle}>
-                  Create a customized workout plan with target exercises, sets, and reps.
-                </Text>
-              </View>
-            )}
+              ) : (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="barbell-outline" size={40} color={colors.textMuted} />
+                  <Text style={styles.emptyTitle}>No active workout plan</Text>
+                  <Text style={styles.emptySubtitle}>
+                    Build a workout routine for this member with targeted exercises and sets.
+                  </Text>
+                </View>
+              )}
 
-            {/* Historical Workout Plans */}
-            {historicalPlans.length > 0 && (
-              <View style={{ marginTop: 24 }}>
-                <Text style={styles.historicalHeading}>Expired / Past Plans ({historicalPlans.length})</Text>
-                {historicalPlans.map((pastPlan) => (
-                  <View key={pastPlan.id} style={styles.pastPlanCard}>
-                    <View style={styles.planHeaderRow}>
+              {/* Historical Workout Plans */}
+              {historicalPlans.length > 0 && (
+                <View style={{ marginTop: 24 }}>
+                  <Text style={styles.sectionHeading}>Expired / Past Plans ({historicalPlans.length})</Text>
+                  {historicalPlans.map((pastPlan) => (
+                    <View key={pastPlan.id} style={styles.flatPastPlanRow}>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.pastPlanTitle}>{pastPlan.title}</Text>
-                        <Text style={styles.planDates}>
-                          Ended: {pastPlan.end_date} (Expired)
-                        </Text>
+                        <Text style={styles.planDates}>Ended: {pastPlan.end_date}</Text>
                       </View>
                       <TouchableOpacity
                         style={styles.smallPdfBtn}
                         onPress={() => handleExportPDF(pastPlan)}
+                        activeOpacity={0.8}
                       >
-                        <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+                        <Ionicons name="document-text-outline" size={15} color={colors.primary} />
                         <Text style={styles.smallPdfBtnText}>PDF</Text>
                       </TouchableOpacity>
                     </View>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* TAB 4: PAYMENTS (Monthly / Yearly dues) */}
-        {activeTab === 'payments' && (
-          <View style={styles.tabContent}>
-            <View style={styles.actionHeaderRow}>
-              <Text style={styles.sectionHeaderTitle}>Billing & Dues</Text>
-              <TouchableOpacity
-                style={styles.actionBtnPrimary}
-                onPress={() => setShowPaymentModal(true)}
-              >
-                <Ionicons name="card-outline" size={16} color="#FFFFFF" />
-                <Text style={styles.actionBtnPrimaryText}>Create Fee Due</Text>
-              </TouchableOpacity>
-            </View>
-
-            {payments.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Ionicons name="wallet-outline" size={40} color={colors.textMuted} />
-                <Text style={styles.emptyTitle}>No payment records</Text>
-                <Text style={styles.emptySubtitle}>
-                  Track monthly or annual membership payments and mark fees as paid.
-                </Text>
-              </View>
-            ) : (
-              payments.map((p) => {
-                const isPaid = p.status === 'paid';
-                return (
-                  <View key={p.id} style={styles.paymentCard}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.paymentLabel}>{p.period_label}</Text>
-                      <Text style={styles.paymentAmount}>
-                        ${p.amount.toFixed(2)} {p.currency} ({p.period_type})
-                      </Text>
-                      <Text style={styles.paymentDueText}>Due: {p.due_date}</Text>
-                    </View>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.paymentStatusToggle,
-                        { backgroundColor: isPaid ? colors.successSoft : colors.dangerSoft },
-                      ]}
-                      onPress={() => handleTogglePaymentStatus(p)}
-                    >
-                      <Ionicons
-                        name={isPaid ? 'checkmark-circle' : 'close-circle'}
-                        size={18}
-                        color={isPaid ? colors.success : colors.danger}
-                      />
-                      <Text
-                        style={[
-                          styles.paymentStatusToggleText,
-                          { color: isPaid ? colors.success : colors.danger },
-                        ]}
-                      >
-                        {isPaid ? 'Paid' : 'Unpaid'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {/* TAB 5: VISITS / CHECK-INS */}
-        {activeTab === 'visits' && (
-          <View style={styles.tabContent}>
-            <Text style={styles.sectionHeaderTitle}>Gym Check-in History</Text>
-            {checkIns.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Ionicons name="checkmark-done-circle-outline" size={40} color={colors.textMuted} />
-                <Text style={styles.emptyTitle}>No check-ins logged</Text>
-                <Text style={styles.emptySubtitle}>
-                  Check in this client from the main dashboard when they arrive.
-                </Text>
-              </View>
-            ) : (
-              checkIns.map((ci) => (
-                <View key={ci.id} style={styles.checkInRow}>
-                  <Ionicons name="time-outline" size={20} color={colors.accent} />
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.checkInTimeText}>
-                      {new Date(ci.check_in_time).toLocaleString()}
-                    </Text>
-                    {ci.notes ? <Text style={styles.checkInNoteText}>{ci.notes}</Text> : null}
-                  </View>
+                  ))}
                 </View>
-              ))
-            )}
-          </View>
-        )}
+              )}
+            </View>
+          )}
+
+          {/* ════ TAB 4: PAYMENTS (KEPT FUNCTIONAL & CLEAN) ════ */}
+          {activeTab === 'payments' && (
+            <View style={styles.tabContent}>
+              <View style={styles.actionHeaderRow}>
+                <Text style={styles.sectionHeading}>Billing & Dues</Text>
+                <TouchableOpacity
+                  style={styles.actionBtnPrimary}
+                  onPress={() => setShowPaymentModal(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="card-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.actionBtnPrimaryText}>Create Fee Due</Text>
+                </TouchableOpacity>
+              </View>
+
+              {payments.length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="wallet-outline" size={40} color={colors.textMuted} />
+                  <Text style={styles.emptyTitle}>No payment records</Text>
+                  <Text style={styles.emptySubtitle}>
+                    Track monthly or annual membership dues and payment statuses.
+                  </Text>
+                </View>
+              ) : (
+                payments.map((p) => {
+                  const isPaid = p.status === 'paid';
+                  return (
+                    <View key={p.id} style={styles.flatPaymentRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.paymentLabel}>{p.period_label}</Text>
+                        <Text style={styles.paymentAmount}>
+                          ${p.amount.toFixed(2)} {p.currency} ({p.period_type})
+                        </Text>
+                        <Text style={styles.paymentDueText}>Due: {p.due_date}</Text>
+                      </View>
+
+                      <TouchableOpacity
+                        style={[
+                          styles.paymentStatusToggle,
+                          { backgroundColor: isPaid ? colors.successSoft : colors.dangerSoft },
+                        ]}
+                        onPress={() => handleTogglePaymentStatus(p)}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons
+                          name={isPaid ? 'checkmark-circle' : 'close-circle'}
+                          size={18}
+                          color={isPaid ? colors.success : colors.danger}
+                        />
+                        <Text
+                          style={[
+                            styles.paymentStatusToggleText,
+                            { color: isPaid ? colors.success : colors.danger },
+                          ]}
+                        >
+                          {isPaid ? 'Paid' : 'Unpaid'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
+
+          {/* ════ TAB 5: VISITS (PROFESSIONAL TIMELINE, NO FRONT DESK TEXT) ════ */}
+          {activeTab === 'visits' && (
+            <View style={styles.tabContent}>
+              <Text style={styles.sectionHeading}>Attendance & Visit History</Text>
+              {checkIns.length === 0 ? (
+                <View style={styles.emptyCard}>
+                  <Ionicons name="checkmark-done-circle-outline" size={40} color={colors.textMuted} />
+                  <Text style={styles.emptyTitle}>No check-ins logged</Text>
+                  <Text style={styles.emptySubtitle}>
+                    Mark member present when they arrive at the gym branch.
+                  </Text>
+                </View>
+              ) : (
+                checkIns.map((ci) => {
+                  const dateObj = new Date(ci.check_in_time);
+                  const formattedDate = !isNaN(dateObj.getTime())
+                    ? dateObj.toLocaleDateString(undefined, {
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric',
+                      }) + ' • ' + dateObj.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+                    : ci.check_in_time;
+
+                  // Clean note without "Front desk check-in"
+                  const displayNote =
+                    ci.notes && ci.notes !== 'Front desk check-in' && ci.notes !== 'Checked In'
+                      ? ci.notes
+                      : 'Checked-in';
+
+                  return (
+                    <View key={ci.id} style={styles.flatVisitRow}>
+                      <View style={styles.visitIconBox}>
+                        <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={styles.visitTimeText}>{formattedDate}</Text>
+                        <Text style={styles.visitNoteText}>{displayNote}</Text>
+                      </View>
+                      <View style={styles.checkedInBadge}>
+                        <Text style={styles.checkedInBadgeText}>Checked In</Text>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          )}
+        </View>
       </ScrollView>
 
-      {/* MODAL: Record Measurement */}
+      {/* ── MODAL: Record Measurement (Height/Weight NOT required, Custom field inside, reset on save) ── */}
       <Modal visible={showMeasModal} animationType="slide" transparent>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalBox}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>New Body Measurement</Text>
-              <TouchableOpacity onPress={() => setShowMeasModal(false)}>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowMeasModal(false);
+                  resetMeasurementForm();
+                }}
+                activeOpacity={0.8}
+              >
                 <Ionicons name="close" size={22} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.measInputRow}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={styles.inputLabel}>Weight (kg) *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="75.5"
-                    keyboardType="numeric"
-                    value={measWeight}
-                    onChangeText={setMeasWeight}
-                  />
+              {/* Unit Switcher Bar for Input */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalUnitSelectorRow}>
+                <View style={styles.modalUnitGroup}>
+                  <Text style={styles.modalUnitLabel}>Weight:</Text>
+                  <TouchableOpacity
+                    style={[styles.modalUnitPill, inputWeightUnit === 'kg' && styles.modalUnitPillActive]}
+                    onPress={() => setInputWeightUnit('kg')}
+                  >
+                    <Text style={[styles.modalUnitPillText, inputWeightUnit === 'kg' && styles.modalUnitPillTextActive]}>kg</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalUnitPill, inputWeightUnit === 'lbs' && styles.modalUnitPillActive]}
+                    onPress={() => setInputWeightUnit('lbs')}
+                  >
+                    <Text style={[styles.modalUnitPillText, inputWeightUnit === 'lbs' && styles.modalUnitPillTextActive]}>lbs</Text>
+                  </TouchableOpacity>
                 </View>
-                <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Text style={styles.inputLabel}>Height (cm) *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="178"
-                    keyboardType="numeric"
-                    value={measHeight}
-                    onChangeText={setMeasHeight}
-                  />
+
+                <View style={[styles.modalUnitGroup, { marginLeft: 10 }]}>
+                  <Text style={styles.modalUnitLabel}>Height:</Text>
+                  {(['cm', 'm', 'mm', 'ft', 'in'] as const).map((unit) => (
+                    <TouchableOpacity
+                      key={unit}
+                      style={[styles.modalUnitPill, inputHeightUnit === unit && styles.modalUnitPillActive]}
+                      onPress={() => setInputHeightUnit(unit)}
+                    >
+                      <Text style={[styles.modalUnitPillText, inputHeightUnit === unit && styles.modalUnitPillTextActive]}>
+                        {unit}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+
+              {/* Real-time Calculated BMI Preview (with category color) */}
+              {(() => {
+                const liveBmi = getLiveModalBMI();
+                if (!liveBmi) return null;
+                const cat = getBMICategory(liveBmi);
+                if (!cat) return null;
+
+                return (
+                  <View style={[styles.modalLiveBmiCard, { backgroundColor: cat.bgColor, borderColor: cat.borderColor }]}>
+                    <View style={styles.modalLiveBmiHeader}>
+                      <Text style={[styles.modalLiveBmiTitle, { color: cat.color }]}>
+                        Calculated BMI: {liveBmi}
+                      </Text>
+                      <View style={[styles.bmiCategoryBadge, { backgroundColor: '#FFFFFF', borderColor: cat.borderColor }]}>
+                        <View style={[styles.bmiCategoryDot, { backgroundColor: cat.color }]} />
+                        <Text style={[styles.bmiCategoryText, { color: cat.color }]}>
+                          {cat.category}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={[styles.modalLiveBmiSub, { color: cat.color }]}>
+                      Category: {cat.category} ({cat.range})
+                    </Text>
+                  </View>
+                );
+              })()}
+
+              {/* Weight & Height - Optional as requested */}
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Weight ({inputWeightUnit})</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder={inputWeightUnit === 'kg' ? 'e.g. 75.5' : 'e.g. 166'}
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      keyboardType="numeric"
+                      value={measWeight}
+                      onChangeText={setMeasWeight}
+                    />
+                  </View>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.inputLabel}>Height ({inputHeightUnit})</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder={
+                        inputHeightUnit === 'm'
+                          ? 'e.g. 1.78'
+                          : inputHeightUnit === 'mm'
+                          ? 'e.g. 1780'
+                          : inputHeightUnit === 'ft'
+                          ? 'e.g. 5.84'
+                          : inputHeightUnit === 'in'
+                          ? 'e.g. 70'
+                          : 'e.g. 178'
+                      }
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      keyboardType="numeric"
+                      value={measHeight}
+                      onChangeText={setMeasHeight}
+                    />
+                  </View>
                 </View>
               </View>
 
-              <View style={styles.measInputRow}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={styles.inputLabel}>Chest (cm)</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="102"
-                    keyboardType="numeric"
-                    value={measChest}
-                    onChangeText={setMeasChest}
-                  />
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Chest ({inputCircumferenceUnit})</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder={inputCircumferenceUnit === 'cm' ? 'e.g. 102' : 'e.g. 40'}
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      keyboardType="numeric"
+                      value={measChest}
+                      onChangeText={setMeasChest}
+                    />
+                  </View>
                 </View>
-                <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Text style={styles.inputLabel}>Arms (cm)</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="38"
-                    keyboardType="numeric"
-                    value={measArms}
-                    onChangeText={setMeasArms}
-                  />
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.inputLabel}>Arms ({inputCircumferenceUnit})</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder={inputCircumferenceUnit === 'cm' ? 'e.g. 38' : 'e.g. 15'}
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      keyboardType="numeric"
+                      value={measArms}
+                      onChangeText={setMeasArms}
+                    />
+                  </View>
                 </View>
               </View>
 
-              <Text style={styles.inputLabel}>Waist (cm)</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="84"
-                keyboardType="numeric"
-                value={measWaist}
-                onChangeText={setMeasWaist}
-              />
+              <Text style={styles.inputLabel}>Waist ({inputCircumferenceUnit})</Text>
+              <View style={styles.inputWrap}>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder={inputCircumferenceUnit === 'cm' ? 'e.g. 84' : 'e.g. 33'}
+                  placeholderTextColor={PLACEHOLDER_COLOR}
+                  keyboardType="numeric"
+                  value={measWaist}
+                  onChangeText={setMeasWaist}
+                />
+              </View>
 
-              {/* Dynamic Trainer Custom Fields */}
+              {/* Dynamic Branch Custom Fields */}
               {customFields.length > 0 && (
                 <View style={{ marginTop: 10 }}>
                   <Text style={[styles.inputLabel, { color: colors.primary, fontWeight: '700' }]}>
-                    Custom Tracked Fields:
+                    Tracked Custom Metrics:
                   </Text>
                   {customFields.map((cf) => (
-                    <View key={cf.id} style={{ marginBottom: 8 }}>
+                    <View key={cf.id} style={{ marginBottom: 4 }}>
                       <Text style={styles.inputLabel}>
                         {cf.name} ({cf.unit})
                       </Text>
-                      <TextInput
-                        style={styles.modalInput}
-                        placeholder={`Value in ${cf.unit}`}
-                        keyboardType="numeric"
-                        value={measCustomValues[cf.name] || ''}
-                        onChangeText={(txt) =>
-                          setMeasCustomValues((prev) => ({ ...prev, [cf.name]: txt }))
-                        }
-                      />
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          style={styles.textInput}
+                          placeholder={`Value in ${cf.unit}`}
+                          placeholderTextColor={PLACEHOLDER_COLOR}
+                          keyboardType="numeric"
+                          value={measCustomValues[cf.name] || ''}
+                          onChangeText={(txt) =>
+                            setMeasCustomValues((prev) => ({ ...prev, [cf.name]: txt }))
+                          }
+                        />
+                      </View>
                     </View>
                   ))}
                 </View>
               )}
 
-              <Text style={styles.inputLabel}>Notes</Text>
-              <TextInput
-                style={[styles.modalInput, { height: 64 }]}
-                placeholder="Client progress notes..."
-                multiline
-                value={measNotes}
-                onChangeText={setMeasNotes}
-              />
+              {/* Custom field creator moved INSIDE measurement modal, NO + icon */}
+              {!showInlineCustomField ? (
+                <TouchableOpacity
+                  style={styles.addCustomMetricBtn}
+                  onPress={() => setShowInlineCustomField(true)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.addCustomMetricBtnText}>Add Custom Metric</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.inlineCustomFieldBox}>
+                  <Text style={styles.inlineCustomFieldTitle}>New Custom Metric Field</Text>
+                  <Text style={styles.inputLabel}>Metric Name</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. Left Thigh, Body Fat %"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      value={inlineFieldName}
+                      onChangeText={setInlineFieldName}
+                    />
+                  </View>
 
-              <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleSaveMeasurement}>
-                <Text style={styles.modalSubmitBtnText}>Save Measurement & Calculate BMI</Text>
+                  <Text style={styles.inputLabel}>Unit (e.g. cm, %, in)</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. cm"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      value={inlineFieldUnit}
+                      onChangeText={setInlineFieldUnit}
+                    />
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                    <TouchableOpacity
+                      style={[styles.inlineActionBtn, { backgroundColor: colors.primary }]}
+                      onPress={handleCreateInlineCustomField}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.inlineActionBtnText, { color: '#FFFFFF' }]}>Create Field</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.inlineActionBtn, { backgroundColor: '#EEF3F0' }]}
+                      onPress={() => setShowInlineCustomField(false)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.inlineActionBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+
+              <Text style={styles.inputLabel}>Measurement Notes</Text>
+              <View style={[styles.inputWrap, styles.textAreaWrap]}>
+                <TextInput
+                  style={[styles.textInput, styles.textAreaInput]}
+                  placeholder="Client progress notes..."
+                  placeholderTextColor={PLACEHOLDER_COLOR}
+                  multiline
+                  value={measNotes}
+                  onChangeText={setMeasNotes}
+                />
+              </View>
+
+              <TouchableOpacity style={styles.saveActionBtn} onPress={handleSaveMeasurement} activeOpacity={0.85}>
+                <Text style={styles.saveActionBtnText}>SAVE MEASUREMENT</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
         </View>
       </Modal>
 
-      {/* MODAL: Add Custom Measurement Field */}
-      <Modal visible={showCustomFieldModal} animationType="fade" transparent>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalBox}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Custom Measurement Field</Text>
-              <TouchableOpacity onPress={() => setShowCustomFieldModal(false)}>
-                <Ionicons name="close" size={22} color={colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.inputLabel}>Field Name (e.g. Body Fat %, Left Thigh)</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Body Fat %"
-              value={newFieldName}
-              onChangeText={setNewFieldName}
-            />
-
-            <Text style={styles.inputLabel}>Measurement Unit (e.g. %, cm, in)</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. % or cm"
-              value={newFieldUnit}
-              onChangeText={setNewFieldUnit}
-            />
-
-            <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleCreateCustomField}>
-              <Text style={styles.modalSubmitBtnText}>Create Custom Field</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL: Add Payment Due */}
+      {/* ── MODAL: Add Payment Due ── */}
       <Modal visible={showPaymentModal} animationType="fade" transparent>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalBox}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Create Fee Due</Text>
-              <TouchableOpacity onPress={() => setShowPaymentModal(false)}>
+              <TouchableOpacity onPress={() => setShowPaymentModal(false)} activeOpacity={0.8}>
                 <Ionicons name="close" size={22} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
             <Text style={styles.inputLabel}>Amount ($)</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="50"
-              keyboardType="numeric"
-              value={payAmount}
-              onChangeText={setPayAmount}
-            />
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="50"
+                placeholderTextColor={PLACEHOLDER_COLOR}
+                keyboardType="numeric"
+                value={payAmount}
+                onChangeText={setPayAmount}
+              />
+            </View>
 
             <Text style={styles.inputLabel}>Period Label (e.g. November 2026, Annual 2026)</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. November 2026"
-              value={payPeriodLabel}
-              onChangeText={setPayPeriodLabel}
-            />
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. November 2026"
+                placeholderTextColor={PLACEHOLDER_COLOR}
+                value={payPeriodLabel}
+                onChangeText={setPayPeriodLabel}
+              />
+            </View>
 
-            <View style={{ flexDirection: 'row', gap: 10, marginVertical: 10 }}>
+            <View style={{ flexDirection: 'row', gap: 10, marginVertical: 12 }}>
               <TouchableOpacity
                 style={[styles.payTypeBtn, payType === 'monthly' && styles.payTypeBtnActive]}
                 onPress={() => setPayType('monthly')}
+                activeOpacity={0.8}
               >
                 <Text style={[styles.payTypeBtnText, payType === 'monthly' && styles.payTypeBtnTextActive]}>
                   Monthly
@@ -792,6 +1720,7 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
               <TouchableOpacity
                 style={[styles.payTypeBtn, payType === 'yearly' && styles.payTypeBtnActive]}
                 onPress={() => setPayType('yearly')}
+                activeOpacity={0.8}
               >
                 <Text style={[styles.payTypeBtnText, payType === 'yearly' && styles.payTypeBtnTextActive]}>
                   Yearly
@@ -799,184 +1728,528 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleCreatePayment}>
-              <Text style={styles.modalSubmitBtnText}>Add Membership Due</Text>
+            <TouchableOpacity style={styles.saveActionBtn} onPress={handleCreatePayment} activeOpacity={0.85}>
+              <Text style={styles.saveActionBtnText}>ADD MEMBERSHIP DUE</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.primaryDark,
+    backgroundColor: '#FFFFFF',
   },
   centered: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.background,
+    backgroundColor: '#FFFFFF',
   },
-  header: {
-    backgroundColor: colors.primaryDark,
-    paddingHorizontal: 20,
-    paddingTop: 12,
+
+  // ── HERO WITH CURVED ARC (Exact same as Profile Screen) ──
+  fixedHeaderWrap: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    zIndex: 25,
   },
-  headerTop: {
-    flexDirection: 'row',
+  heroFoliageContainer: {
+    width: '100%',
+    position: 'relative',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 0,
+    backgroundColor: '#FFFFFF',
   },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  foliageBg: {
+    width: '100%',
+    borderBottomLeftRadius: 140,
+    borderBottomRightRadius: 140,
+    overflow: 'hidden',
+  },
+  foliageImage: {
+    borderBottomLeftRadius: 140,
+    borderBottomRightRadius: 140,
+  },
+  foliageOverlay: {
+    width: '100%',
+    backgroundColor: 'rgba(6, 35, 22, 0.70)',
+    borderBottomLeftRadius: 140,
+    borderBottomRightRadius: 140,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 22,
+  },
+  foliageBrandTitle: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 2,
+    textShadowColor: 'rgba(0, 0, 0, 0.6)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
+  },
+  foliageDivider: {
+    width: 50,
+    height: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    marginVertical: 8,
+    borderRadius: 1,
+  },
+  foliageBrandSubtitle: {
+    fontSize: 12,
+    color: '#E2E8F0',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  topLeftBackBtn: {
+    position: 'absolute',
+    left: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  memberBriefRow: {
+  topRightEditBtn: {
+    position: 'absolute',
+    right: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  avatarLarge: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: colors.mint,
+    gap: 4,
+    height: 38,
+    paddingHorizontal: 12,
+    borderRadius: 19,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  avatarLargeText: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: colors.primaryDark,
-  },
-  briefName: {
-    fontSize: 20,
-    fontWeight: '800',
+  topRightEditBtnText: {
     color: '#FFFFFF',
-  },
-  briefContact: {
     fontSize: 13,
-    color: '#A7F3D0',
+    fontWeight: '700',
+  },
+
+  // ── SCROLL CONTENT (Seamless white, no container cutoff gap) ──
+  scrollContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  scrollContent: {
+    backgroundColor: '#FFFFFF',
+  },
+  cleanBody: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingTop: 16,
+  },
+
+  // ── Profile Overview Header ──
+  profileHeaderBlock: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  profileAvatarBox: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: '#EEF3F0',
+    borderWidth: 2.5,
+    borderColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  profileAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 46,
+  },
+  profileAvatarInitial: {
+    fontSize: 36,
+    fontWeight: '900',
+    color: colors.primary,
+  },
+  profileAvatarCameraBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  profileNameTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginTop: 10,
+    textAlign: 'center',
+  },
+  profileSubContact: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  headerPillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: rounded.full,
+  },
+  statusBadgeActive: {
+    backgroundColor: colors.mintSoft,
+  },
+  statusBadgeInactive: {
+    backgroundColor: colors.dangerSoft,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  statusBadgeTextActive: {
+    color: colors.primary,
+  },
+  statusBadgeTextInactive: {
+    color: colors.danger,
+  },
+  goalBadge: {
+    backgroundColor: '#EEF3F0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: rounded.full,
+    maxWidth: 200,
+  },
+  goalBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  locationSelectorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 14,
+    width: '100%',
+  },
+  locationSelectorLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.textMuted,
+    letterSpacing: 0.8,
+  },
+  locationSelectorValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
     marginTop: 2,
   },
-  briefPillRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 6,
+  branchTagBadge: {
+    backgroundColor: colors.mintSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
   },
-  briefStatusPill: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: rounded.full,
-  },
-  briefStatusText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  goalPill: {
-    backgroundColor: 'rgba(16, 185, 129, 0.25)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: rounded.full,
-    maxWidth: 160,
-  },
-  goalText: {
-    color: '#D1FAE5',
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  tabScroll: {
-    flexDirection: 'row',
-    marginTop: 6,
-  },
-  tabItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    marginRight: 6,
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent',
-  },
-  tabItemActive: {
-    borderBottomColor: colors.mint,
-  },
-  tabLabel: {
-    fontSize: 14,
-    color: '#94A3B8',
-    fontWeight: '600',
-  },
-  tabLabelActive: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-  },
-  bodyContent: {
-    backgroundColor: colors.background,
-    flexGrow: 1,
-    padding: 20,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-  },
-  tabContent: {
-    paddingBottom: 24,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: rounded.lg,
-    padding: 18,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    ...shadows.soft,
-  },
-  cardHeader: {
-    fontSize: 16,
+  branchTagBadgeText: {
+    fontSize: 11,
     fontWeight: '700',
     color: colors.primary,
-    marginBottom: 14,
   },
-  infoRow: {
+
+  // ── Tab Navigation Bar ──
+  categoryTabsContainer: {
+    width: '100%',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    marginBottom: 20,
+    marginTop: 4,
+  },
+  categoryTabsContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  categoryTabItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  categoryTabItemActive: {},
+  categoryTabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  categoryTabTextActive: {
+    color: colors.primary,
+    fontWeight: '800',
+  },
+  categoryTabIndicator: {
+    position: 'absolute',
+    bottom: -1,
+    left: 12,
+    right: 12,
+    height: 3,
+    backgroundColor: colors.primary,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
+  },
+
+  // ── Tab Body Content (No container boxes) ──
+  tabContent: {
+    paddingBottom: 16,
+  },
+  sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  infoLabel: {
-    fontSize: 13,
+  sectionHeading: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  inlineEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: rounded.full,
+    backgroundColor: colors.mintSoft,
+  },
+  inlineEditBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+
+  // Flat Info Rows (No cards!)
+  flatRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  flatLabel: {
+    fontSize: 14,
     color: colors.textSecondary,
     fontWeight: '500',
   },
-  infoValue: {
+  flatValue: {
     fontSize: 14,
     fontWeight: '600',
     color: colors.textPrimary,
+    maxWidth: '60%',
+    textAlign: 'right',
   },
+
+  // ── Form & Edit Styling ──
+  fieldsSection: {
+    width: '100%',
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 6,
+    marginTop: 10,
+  },
+  inputWrap: {
+    backgroundColor: '#EEF3F0',
+    borderRadius: 9999,
+    paddingHorizontal: 20,
+    height: 52,
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  textAreaWrap: {
+    height: 76,
+    borderRadius: 20,
+    paddingTop: 12,
+    paddingBottom: 12,
+    justifyContent: 'flex-start',
+  },
+  textInput: {
+    fontSize: 15,
+    color: colors.textPrimary,
+    fontWeight: '500',
+  },
+  textAreaInput: {
+    height: 52,
+    textAlignVertical: 'top',
+  },
+  rowInputs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  // Title Chips
+  titleChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 6,
+  },
+  titleChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: rounded.full,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FAFC',
+  },
+  titleChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  titleChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  titleChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+
+  // Gender Buttons
+  genderRow: {
+    flexDirection: 'row',
+    backgroundColor: '#EEF3F0',
+    borderRadius: 9999,
+    padding: 3,
+    height: 52,
+    alignItems: 'center',
+  },
+  genderBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 9999,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  genderBtnActive: {
+    backgroundColor: colors.primary,
+  },
+  genderBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  genderBtnTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+
+  // Status Toggle
+  statusToggleRow: {
+    flexDirection: 'row',
+    backgroundColor: '#EEF3F0',
+    borderRadius: 9999,
+    padding: 4,
+    height: 52,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statusToggleBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 9999,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusToggleBtnActive: {
+    backgroundColor: colors.primary,
+  },
+  statusToggleBtnInactive: {
+    backgroundColor: colors.primary,
+  },
+  statusToggleBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  statusToggleBtnTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // Action Buttons
+  saveActionBtn: {
+    height: 52,
+    backgroundColor: colors.primary,
+    borderRadius: 9999,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 22,
+    marginBottom: 10,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.24,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  saveActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  cancelActionBtn: {
+    height: 48,
+    borderRadius: 9999,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#EEF3F0',
+    marginBottom: 16,
+  },
+  cancelActionBtnText: {
+    color: colors.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
+  // ── Progress Tab (Flat Items, No container box) ──
   actionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   actionBtnPrimary: {
     backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 9,
-    paddingHorizontal: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: rounded.full,
     gap: 6,
   },
@@ -985,44 +2258,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  actionBtnSecondary: {
-    backgroundColor: colors.sage,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 9,
-    paddingHorizontal: 12,
-    borderRadius: rounded.full,
-    gap: 6,
-  },
-  actionBtnSecondaryText: {
-    color: colors.primary,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  sectionHeaderTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: colors.textPrimary,
-  },
-  measurementCard: {
-    backgroundColor: colors.surface,
-    borderRadius: rounded.lg,
+  flatMeasurementItem: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    ...shadows.soft,
+    borderColor: '#E2E8F0',
   },
   measHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  measDate: {
+  measDateText: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.textPrimary,
+  },
+  bmiBadgeGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
   },
   bmiBadge: {
     backgroundColor: colors.mintSoft,
@@ -1032,46 +2291,277 @@ const styles = StyleSheet.create({
   },
   bmiBadgeText: {
     color: colors.primary,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  bmiCategoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: rounded.full,
+    borderWidth: 1,
+    gap: 4,
+  },
+  bmiCategoryDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  bmiCategoryText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+
+  // Unit Selector Toolbar in Progress Tab
+  unitToolbar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  unitToolbarLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  unitToolbarTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  unitPillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  unitToggleGroup: {
+    flexDirection: 'row',
+    backgroundColor: '#EEF3F0',
+    borderRadius: 9999,
+    padding: 2,
+  },
+  unitTogglePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 9999,
+  },
+  unitTogglePillActive: {
+    backgroundColor: colors.primary,
+  },
+  unitTogglePillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  unitTogglePillTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // BMI Graph Card & Scale
+  bmiGraphCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  bmiCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  bmiCardTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  bmiCardDate: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  bmiCategoryBadgeLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: rounded.full,
+    borderWidth: 1,
+    gap: 5,
+  },
+  bmiCategoryDotLarge: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  bmiCategoryTextLarge: {
     fontSize: 12,
     fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  bmiScoreRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 6,
+    marginBottom: 12,
+  },
+  bmiScoreValue: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: colors.textPrimary,
+    letterSpacing: -0.5,
+  },
+  bmiScoreUnit: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  bmiScoreCategoryLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+  bmiLegendItemHighlight: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  bmiLegendRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    gap: 4,
+    flexWrap: 'wrap',
+  },
+  bmiLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  bmiLegendDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
+  bmiLegendText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  bmiLegendRange: {
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+
+  // Modal Unit Selector & Live BMI preview
+  modalUnitSelectorRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  modalUnitGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  modalUnitLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  modalUnitPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 9999,
+    backgroundColor: '#EEF3F0',
+  },
+  modalUnitPillActive: {
+    backgroundColor: colors.primary,
+  },
+  modalUnitPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  modalUnitPillTextActive: {
+    color: '#FFFFFF',
+  },
+  modalLiveBmiCard: {
+    borderRadius: 12,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+  },
+  modalLiveBmiHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalLiveBmiTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  modalLiveBmiSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 3,
   },
   measGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
   measCol: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: rounded.md,
+    backgroundColor: '#EEF3F0',
+    borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
     minWidth: 80,
   },
   measParamLabel: {
     fontSize: 11,
-    color: colors.textSecondary,
-    marginBottom: 2,
+    color: colors.textMuted,
+    fontWeight: '600',
   },
   measParamVal: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
     color: colors.textPrimary,
+    marginTop: 2,
   },
   customValuesBox: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
     marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.divider,
     paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
   },
   customPill: {
     flexDirection: 'row',
-    backgroundColor: colors.sage,
+    backgroundColor: '#EEF3F0',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: rounded.sm,
+    borderRadius: rounded.full,
     gap: 4,
   },
   customPillLabel: {
@@ -1081,34 +2571,86 @@ const styles = StyleSheet.create({
   },
   customPillVal: {
     fontSize: 11,
+    fontWeight: '600',
     color: colors.textPrimary,
   },
-  activePlanCard: {
-    backgroundColor: colors.surface,
-    borderRadius: rounded.xl,
-    padding: 18,
+  measNotesText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+
+  // Add Custom Metric Button Inside Measurement Modal (No + icon)
+  addCustomMetricBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 9999,
+    backgroundColor: '#EEF3F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  addCustomMetricBtnText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  inlineCustomFieldBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 14,
+    marginTop: 10,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  inlineCustomFieldTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  inlineActionBtn: {
+    flex: 1,
+    height: 44,
+    borderRadius: 9999,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  inlineActionBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  // ── Workouts Tab ──
+  flatPlanBlock: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1.5,
-    borderColor: colors.accent,
-    marginBottom: 16,
-    ...shadows.card,
+    borderColor: colors.primary,
+    marginBottom: 14,
   },
   planHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 10,
   },
   activeRoutinePill: {
     backgroundColor: colors.mintSoft,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: rounded.full,
     alignSelf: 'flex-start',
-    marginBottom: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginBottom: 4,
   },
   activeRoutinePillText: {
     color: colors.primary,
     fontSize: 10,
     fontWeight: '800',
+    letterSpacing: 0.5,
   },
   planTitle: {
     fontSize: 18,
@@ -1121,34 +2663,39 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   planNotesText: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textSecondary,
-    fontStyle: 'italic',
+    backgroundColor: '#EEF3F0',
+    padding: 10,
+    borderRadius: 10,
     marginBottom: 12,
   },
   exerciseList: {
-    marginVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingTop: 12,
+    gap: 8,
   },
   exerciseItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
+    backgroundColor: '#EEF3F0',
+    padding: 10,
+    borderRadius: 12,
   },
   exerciseNum: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.sage,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
   },
   exerciseNumText: {
-    fontSize: 12,
+    color: '#FFFFFF',
+    fontSize: 11,
     fontWeight: '700',
-    color: colors.primary,
   },
   exerciseItemName: {
     fontSize: 14,
@@ -1156,7 +2703,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   exerciseItemMeta: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textSecondary,
     marginTop: 2,
   },
@@ -1164,6 +2711,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
   },
   pdfExportBtn: {
     flex: 1,
@@ -1171,8 +2721,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: rounded.md,
+    paddingVertical: 10,
+    borderRadius: rounded.full,
     gap: 6,
   },
   pdfExportBtnText: {
@@ -1182,12 +2732,12 @@ const styles = StyleSheet.create({
   },
   calendarSyncBtn: {
     flex: 1,
-    backgroundColor: colors.sage,
+    backgroundColor: colors.mintSoft,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: rounded.md,
+    paddingVertical: 10,
+    borderRadius: rounded.full,
     gap: 6,
   },
   calendarSyncBtnText: {
@@ -1195,51 +2745,41 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  historicalHeading: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    marginBottom: 10,
-  },
-  pastPlanCard: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: rounded.md,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
+  flatPastPlanRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
   pastPlanTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: colors.textPrimary,
   },
   smallPdfBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: colors.mintSoft,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: rounded.sm,
+    borderRadius: rounded.full,
     gap: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   smallPdfBtnText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.primary,
   },
-  paymentCard: {
+
+  // ── Payments Tab ──
+  flatPaymentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    padding: 16,
-    borderRadius: rounded.md,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
   paymentLabel: {
     fontSize: 15,
@@ -1259,7 +2799,7 @@ const styles = StyleSheet.create({
   paymentStatusToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: rounded.full,
     gap: 4,
@@ -1268,32 +2808,53 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  checkInRow: {
+
+  // ── Visits Tab (Professional Timeline) ──
+  flatVisitRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    padding: 14,
-    borderRadius: rounded.md,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
   },
-  checkInTimeText: {
+  visitIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.mintSoft,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  visitTimeText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.textPrimary,
   },
-  checkInNoteText: {
+  visitNoteText: {
     fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 2,
+    color: colors.textSecondary,
+    marginTop: 1,
   },
+  checkedInBadge: {
+    backgroundColor: colors.mintSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: rounded.full,
+  },
+  checkedInBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+
+  // Empty state
   emptyCard: {
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
-    backgroundColor: colors.surface,
-    borderRadius: rounded.lg,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    marginVertical: 12,
   },
   emptyTitle: {
     fontSize: 15,
@@ -1307,14 +2868,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 4,
   },
-  // Modal Styles
+
+  // ── Modals ──
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'flex-end',
   },
   modalBox: {
-    backgroundColor: colors.surface,
+    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
@@ -1331,54 +2893,18 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.textPrimary,
   },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    marginBottom: 4,
-    marginTop: 8,
-  },
-  modalInput: {
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: rounded.md,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: colors.textPrimary,
-  },
-  measInputRow: {
-    flexDirection: 'row',
-  },
-  modalSubmitBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: rounded.md,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 16,
-  },
-  modalSubmitBtnText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-  },
   payTypeBtn: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: rounded.md,
-    backgroundColor: colors.surfaceAlt,
+    paddingVertical: 12,
+    borderRadius: 9999,
+    backgroundColor: '#EEF3F0',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   payTypeBtnActive: {
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   payTypeBtnText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.textSecondary,
   },

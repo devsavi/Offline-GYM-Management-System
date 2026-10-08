@@ -43,6 +43,7 @@ export interface Member {
   id: string;
   location_id: string;
   name: string;
+  title?: string;
   age?: number;
   dob?: string;
   gender?: 'male' | 'female' | 'other';
@@ -72,8 +73,8 @@ export interface Measurement {
   id: string;
   member_id: string;
   date: string;
-  weight: number; // in kg
-  height: number; // in cm
+  weight?: number; // in kg (optional)
+  height?: number; // in cm (optional)
   bmi: number;    // auto-calculated
   chest?: number;
   arms?: number;

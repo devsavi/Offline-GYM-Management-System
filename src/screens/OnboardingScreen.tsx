@@ -25,7 +25,7 @@ import { colors, rounded } from '../theme/colors';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
 
-const BG_IMAGE = require('../../public/home_bg.jpg');
+const BG_IMAGE = require('../../public/home_bg.webp');
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('screen');
 
 // Safe distance below device notification/status bar

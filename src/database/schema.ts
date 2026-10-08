@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS locations (
 CREATE TABLE IF NOT EXISTS members (
   id TEXT PRIMARY KEY,
   location_id TEXT NOT NULL,
+  title TEXT,
   name TEXT NOT NULL,
   age INTEGER,
   dob TEXT,

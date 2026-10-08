@@ -76,12 +76,13 @@ export const memberService = {
 
     await runQuery(
       `INSERT INTO members (
-        id, location_id, name, age, dob, gender, phone, email, address,
+        id, location_id, title, name, age, dob, gender, phone, email, address,
         emergency_contact, injuries, fitness_goals, status, photo_uri, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       [
         id,
         data.location_id,
+        data.title?.trim() ?? null,
         data.name.trim(),
         data.age ?? null,
         data.dob ?? null,
@@ -113,7 +114,7 @@ export const memberService = {
     const params: (string | number | null)[] = [];
 
     const allowedKeys: (keyof Member)[] = [
-      'name', 'age', 'dob', 'gender', 'phone', 'email', 'address',
+      'title', 'name', 'age', 'dob', 'gender', 'phone', 'email', 'address',
       'emergency_contact', 'injuries', 'fitness_goals', 'status', 'photo_uri'
     ];
 

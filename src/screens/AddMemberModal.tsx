@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,23 +6,39 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   Alert,
+  Image,
+  ImageBackground,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, rounded, shadows } from '../theme/colors';
+import * as ImagePicker from 'expo-image-picker';
+import { colors, rounded } from '../theme/colors';
 import { memberService } from '../database/services/memberService';
+import { measurementService } from '../database/services/measurementService';
 import { useGymStore } from '../store/useGymStore';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
+import { CustomMeasurementField } from '../types';
+
+const TOP_BAR_BG = require('../../public/top_bar.webp');
+const PLACEHOLDER_COLOR = '#8B9E93';
+const TITLE_OPTIONS = ['Mr.', 'Ms.', 'Mrs.', 'Coach', 'Trainer', 'Dr.'];
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddMember'>;
 
 export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { selectedLocation, refreshDashboard } = useGymStore();
 
+  // Basic Info States
+  const [title, setTitle] = useState('Mr.');
   const [name, setName] = useState('');
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [age, setAge] = useState('');
   const [gender, setGender] = useState<'male' | 'female' | 'other'>('male');
   const [phone, setPhone] = useState('');
@@ -32,21 +48,79 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
   const [injuries, setInjuries] = useState('');
   const [fitnessGoals, setFitnessGoals] = useState('Muscle Building & Strength');
 
+  // Baseline Measurement States
+  const [customFields, setCustomFields] = useState<CustomMeasurementField[]>([]);
+  const [measWeight, setMeasWeight] = useState('');
+  const [measHeight, setMeasHeight] = useState('');
+  const [measChest, setMeasChest] = useState('');
+  const [measArms, setMeasArms] = useState('');
+  const [measWaist, setMeasWaist] = useState('');
+  const [customValues, setCustomValues] = useState<Record<string, string>>({});
+  const [measNotes, setMeasNotes] = useState('');
+
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Load custom measurement fields for current branch
+  useEffect(() => {
+    if (selectedLocation) {
+      measurementService.getCustomFields(selectedLocation.id)
+        .then((fields) => setCustomFields(fields))
+        .catch((err) => console.warn('Could not load custom fields:', err));
+    }
+  }, [selectedLocation]);
+
+  const handlePickAvatar = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Needed', 'Please grant photo library access to upload a profile photo.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setAvatarUri(result.assets[0].uri);
+      }
+    } catch {
+      Alert.alert('Error', 'Could not open photo library.');
+    }
+  };
+
   const handleSave = async () => {
     if (!name.trim()) {
-      Alert.alert('Required', 'Please enter member name.');
+      Alert.alert('Required', 'Please enter member full name.');
       return;
     }
     if (!selectedLocation) {
-      Alert.alert('Error', 'No location active.');
+      Alert.alert('Error', 'No active branch selected.');
       return;
     }
 
+    // Weight and height are optional as requested
+    const weightNum = parseFloat(measWeight);
+    const heightNum = parseFloat(measHeight);
+    const hasAnyMeasurement =
+      measWeight.trim() !== '' ||
+      measHeight.trim() !== '' ||
+      measChest.trim() !== '' ||
+      measArms.trim() !== '' ||
+      measWaist.trim() !== '' ||
+      Object.keys(customValues).some((k) => customValues[k].trim() !== '');
+
+    setIsSaving(true);
     try {
-      await memberService.createMember({
+      const newMember = await memberService.createMember({
         location_id: selectedLocation.id,
+        title: title || undefined,
         name: name.trim(),
-        age: age ? parseInt(age) : undefined,
+        photo_uri: avatarUri || undefined,
+        age: age ? parseInt(age, 10) : undefined,
         gender,
         phone: phone.trim() || undefined,
         email: email.trim() || undefined,
@@ -57,230 +131,759 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
         status: 'active',
       });
 
+      // Save initial baseline measurement if provided (no required weight/height!)
+      if (hasAnyMeasurement) {
+        const validCustomValues: Record<string, string> = {};
+        for (const [k, v] of Object.entries(customValues)) {
+          if (v && v.trim()) validCustomValues[k] = v.trim();
+        }
+
+        await measurementService.addMeasurement({
+          member_id: newMember.id,
+          date: new Date().toISOString().split('T')[0],
+          weight: !isNaN(weightNum) && weightNum > 0 ? weightNum : 0,
+          height: !isNaN(heightNum) && heightNum > 0 ? heightNum : 0,
+          chest: measChest ? parseFloat(measChest) : undefined,
+          arms: measArms ? parseFloat(measArms) : undefined,
+          waist: measWaist ? parseFloat(measWaist) : undefined,
+          custom_values: Object.keys(validCustomValues).length > 0 ? validCustomValues : undefined,
+          notes: measNotes.trim() || 'Initial baseline measurements on registration',
+        });
+      }
+
       await refreshDashboard();
       Alert.alert('Success', `${name} registered successfully.`);
       navigation.goBack();
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Could not register member');
+    } finally {
+      setIsSaving(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={styles.screenContainer}
+    >
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
-          <Ionicons name="close" size={22} color="#FFFFFF" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Register New Member</Text>
-        <View style={{ width: 36 }} />
+      {/* ── TOP HERO WITH CURVED ARC (Fixed header, exact same as Profile Screen) ── */}
+      <View style={styles.fixedHeaderWrap}>
+        <View style={[styles.heroFoliageContainer, { minHeight: 180 + insets.top }]}>
+          <ImageBackground
+            source={TOP_BAR_BG}
+            style={[styles.foliageBg, { minHeight: 180 + insets.top }]}
+            imageStyle={styles.foliageImage}
+            resizeMode="cover"
+          >
+            <View style={[styles.foliageOverlay, { paddingTop: insets.top + 16, minHeight: 180 + insets.top }]}>
+              <Text style={styles.foliageBrandTitle}>GripState</Text>
+              <View style={styles.foliageDivider} />
+              <Text style={styles.foliageBrandSubtitle}>
+                The professional gym management platform.
+              </Text>
+            </View>
+          </ImageBackground>
+
+          {/* Top Right Close 'X' Button */}
+          <TouchableOpacity
+            style={[styles.topRightCloseBtn, { top: insets.top + 12 }]}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.8}
+            accessibilityLabel="Close"
+          >
+            <Ionicons name="close" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={styles.card}>
-          <Text style={styles.label}>Full Name *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. Sarah Jenkins"
-            value={name}
-            onChangeText={setName}
-          />
+      <ScrollView
+        style={styles.scrollContainer}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 28 }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.cleanBody}>
+          {/* Avatar Picker & Header Block */}
+          <View style={styles.profileHeaderBlock}>
+            <TouchableOpacity
+              style={styles.profileAvatarBox}
+              onPress={handlePickAvatar}
+              activeOpacity={0.85}
+            >
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.profileAvatarImage} />
+              ) : (
+                <View style={styles.avatarPlaceholder}>
+                  <Ionicons name="person-outline" size={38} color={colors.primary} />
+                </View>
+              )}
+              <View style={styles.profileAvatarCameraBadge}>
+                <Ionicons name="camera" size={14} color="#FFFFFF" />
+              </View>
+            </TouchableOpacity>
 
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Age</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="28"
-                keyboardType="numeric"
-                value={age}
-                onChangeText={setAge}
-              />
-            </View>
+            <Text style={styles.avatarHintText}>
+              {avatarUri ? 'Change Profile Photo' : 'Upload Profile Photo'}
+            </Text>
 
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>Gender</Text>
-              <View style={styles.genderRow}>
-                {(['male', 'female', 'other'] as const).map((g) => (
-                  <TouchableOpacity
-                    key={g}
-                    style={[styles.genderBtn, gender === g && styles.genderBtnActive]}
-                    onPress={() => setGender(g)}
-                  >
-                    <Text
-                      style={[
-                        styles.genderBtnText,
-                        gender === g && styles.genderBtnTextActive,
-                      ]}
-                    >
-                      {g.charAt(0).toUpperCase() + g.slice(1)}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+            {/* Active Branch Card */}
+            <View style={styles.locationSelectorCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.locationSelectorLabel}>REGISTERING TO BRANCH</Text>
+                <Text style={styles.locationSelectorValue} numberOfLines={1}>
+                  {selectedLocation?.name || 'Main Gym'}
+                </Text>
+              </View>
+              <View style={styles.locationTagBadge}>
+                <Text style={styles.locationTagBadgeText}>Active</Text>
               </View>
             </View>
           </View>
 
-          <Text style={styles.label}>Phone Number</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="+1 (555) 019-2834"
-            keyboardType="phone-pad"
-            value={phone}
-            onChangeText={setPhone}
-          />
+          {/* ── SECTION 1: PERSONAL DETAILS ── */}
+          <View style={styles.fieldsSection}>
+            <Text style={styles.sectionHeading}>Member Information</Text>
 
-          <Text style={styles.label}>Email Address</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="sarah@example.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
-          />
+            {/* Salutation / Title */}
+            <Text style={styles.inputLabel}>Salutation / Title</Text>
+            <View style={styles.titleChipRow}>
+              {TITLE_OPTIONS.map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.titleChip, title === t && styles.titleChipActive]}
+                  onPress={() => setTitle(t)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.titleChipText, title === t && styles.titleChipTextActive]}>
+                    {t}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
-          <Text style={styles.label}>Home Address</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Apt 4B, 12 Park Avenue"
-            value={address}
-            onChangeText={setAddress}
-          />
+            {/* Full Name */}
+            <Text style={styles.inputLabel}>Full Name *</Text>
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. Sarah Jenkins"
+                placeholderTextColor={PLACEHOLDER_COLOR}
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
+              />
+            </View>
 
-          <Text style={styles.label}>Emergency Contact (Name & Phone)</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="John (Spouse) - 555-0199"
-            value={emergencyContact}
-            onChangeText={setEmergencyContact}
-          />
+            {/* Age & Gender Row */}
+            <View style={styles.rowInputs}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>Age</Text>
+                <View style={styles.inputWrap}>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="e.g. 28"
+                    placeholderTextColor={PLACEHOLDER_COLOR}
+                    keyboardType="numeric"
+                    value={age}
+                    onChangeText={setAge}
+                  />
+                </View>
+              </View>
 
-          <Text style={styles.label}>Fitness Goals</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Weight Loss, Strength, Mobility..."
-            value={fitnessGoals}
-            onChangeText={setFitnessGoals}
-          />
+              <View style={{ flex: 1.5, marginLeft: 12 }}>
+                <Text style={styles.inputLabel}>Gender</Text>
+                <View style={styles.genderRow}>
+                  {(['male', 'female', 'other'] as const).map((g) => (
+                    <TouchableOpacity
+                      key={g}
+                      style={[styles.genderBtn, gender === g && styles.genderBtnActive]}
+                      onPress={() => setGender(g)}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.genderBtnText,
+                          gender === g && styles.genderBtnTextActive,
+                        ]}
+                      >
+                        {g === 'male' ? 'Male' : g === 'female' ? 'Female' : 'Other'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
 
-          <Text style={styles.label}>Prior Injuries / Medical Conditions</Text>
-          <TextInput
-            style={[styles.input, { height: 60 }]}
-            placeholder="Lower back strain, right knee surgery..."
-            multiline
-            value={injuries}
-            onChangeText={setInjuries}
-          />
+            {/* Phone */}
+            <Text style={styles.inputLabel}>Phone Number</Text>
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. +1 (555) 019-2834"
+                placeholderTextColor={PLACEHOLDER_COLOR}
+                keyboardType="phone-pad"
+                value={phone}
+                onChangeText={setPhone}
+              />
+            </View>
 
-          <TouchableOpacity style={styles.saveBtn} onPress={handleSave} activeOpacity={0.85}>
-            <Text style={styles.saveBtnText}>Save Member to Offline Database</Text>
-          </TouchableOpacity>
+            {/* Email */}
+            <Text style={styles.inputLabel}>Email Address</Text>
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. sarah@example.com"
+                placeholderTextColor={PLACEHOLDER_COLOR}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
+              />
+            </View>
+
+            {/* Address */}
+            <Text style={styles.inputLabel}>Home Address</Text>
+            <View style={[styles.inputWrap, styles.textAreaWrap]}>
+              <TextInput
+                style={[styles.textInput, styles.textAreaInput]}
+                placeholder="e.g. Apt 4B, 12 Park Avenue"
+                placeholderTextColor={PLACEHOLDER_COLOR}
+                multiline
+                value={address}
+                onChangeText={setAddress}
+              />
+            </View>
+
+            {/* Emergency Contact */}
+            <Text style={styles.inputLabel}>Emergency Contact (Name & Phone)</Text>
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. John (Spouse) - 555-0199"
+                placeholderTextColor={PLACEHOLDER_COLOR}
+                value={emergencyContact}
+                onChangeText={setEmergencyContact}
+              />
+            </View>
+
+            {/* Fitness Goals */}
+            <Text style={styles.inputLabel}>Fitness Goals</Text>
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.textInput}
+                placeholder="e.g. Weight Loss, Muscle Building, Mobility"
+                placeholderTextColor={PLACEHOLDER_COLOR}
+                value={fitnessGoals}
+                onChangeText={setFitnessGoals}
+              />
+            </View>
+
+            {/* Injuries / Medical Limitations */}
+            <Text style={styles.inputLabel}>Prior Injuries / Medical Conditions</Text>
+            <View style={[styles.inputWrap, styles.textAreaWrap]}>
+              <TextInput
+                style={[styles.textInput, styles.textAreaInput]}
+                placeholder="e.g. Lower back strain, knee surgery..."
+                placeholderTextColor={PLACEHOLDER_COLOR}
+                multiline
+                value={injuries}
+                onChangeText={setInjuries}
+              />
+            </View>
+
+            {/* ── SECTION 2: INITIAL BODY MEASUREMENTS (OPTIONAL HEIGHT/WEIGHT) ── */}
+            <View style={styles.measurementSectionCard}>
+              <View style={styles.measHeaderRow}>
+                <View style={styles.measIconBox}>
+                  <Ionicons name="speedometer-outline" size={20} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.measSectionTitle}>Initial Body Measurements</Text>
+                  <Text style={styles.measSectionSubtitle}>
+                    Optional: Baseline stats to calculate BMI & track progress
+                  </Text>
+                </View>
+              </View>
+
+              {/* Weight & Height - Optional */}
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Weight (kg)</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. 72.5"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      keyboardType="numeric"
+                      value={measWeight}
+                      onChangeText={setMeasWeight}
+                    />
+                  </View>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.inputLabel}>Height (cm)</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. 175"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      keyboardType="numeric"
+                      value={measHeight}
+                      onChangeText={setMeasHeight}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* Chest & Arms */}
+              <View style={styles.rowInputs}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Chest (cm)</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. 98"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      keyboardType="numeric"
+                      value={measChest}
+                      onChangeText={setMeasChest}
+                    />
+                  </View>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={styles.inputLabel}>Arms (cm)</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. 35"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      keyboardType="numeric"
+                      value={measArms}
+                      onChangeText={setMeasArms}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* Waist */}
+              <Text style={styles.inputLabel}>Waist (cm)</Text>
+              <View style={styles.inputWrap}>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g. 82"
+                  placeholderTextColor={PLACEHOLDER_COLOR}
+                  keyboardType="numeric"
+                  value={measWaist}
+                  onChangeText={setMeasWaist}
+                />
+              </View>
+
+              {/* Custom Tracked Fields */}
+              {customFields.length > 0 && (
+                <View style={styles.customFieldsSection}>
+                  <Text style={styles.customFieldsHeading}>
+                    Branch Custom Metrics ({customFields.length})
+                  </Text>
+                  {customFields.map((cf) => (
+                    <View key={cf.id} style={{ marginBottom: 4 }}>
+                      <Text style={styles.inputLabel}>
+                        {cf.name} ({cf.unit})
+                      </Text>
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          style={styles.textInput}
+                          placeholder={`Value in ${cf.unit}`}
+                          placeholderTextColor={PLACEHOLDER_COLOR}
+                          keyboardType="numeric"
+                          value={customValues[cf.name] || ''}
+                          onChangeText={(txt) =>
+                            setCustomValues((prev) => ({ ...prev, [cf.name]: txt }))
+                          }
+                        />
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Measurement Notes */}
+              <Text style={styles.inputLabel}>Measurement Notes</Text>
+              <View style={[styles.inputWrap, styles.textAreaWrap]}>
+                <TextInput
+                  style={[styles.textInput, styles.textAreaInput]}
+                  placeholder="e.g. Measured before morning workout session"
+                  placeholderTextColor={PLACEHOLDER_COLOR}
+                  multiline
+                  value={measNotes}
+                  onChangeText={setMeasNotes}
+                />
+              </View>
+            </View>
+
+            {/* Save Member Button */}
+            <TouchableOpacity
+              style={styles.saveActionBtn}
+              onPress={handleSave}
+              disabled={isSaving}
+              activeOpacity={0.85}
+            >
+              {isSaving ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.saveActionBtnText}>REGISTER MEMBER</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  screenContainer: {
     flex: 1,
-    backgroundColor: colors.primaryDark,
+    backgroundColor: '#FFFFFF',
   },
-  header: {
-    flexDirection: 'row',
+
+  // ── HERO WITH CURVED ARC (Exact same as Profile Screen) ──
+  fixedHeaderWrap: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    zIndex: 20,
+  },
+  heroFoliageContainer: {
+    width: '100%',
+    position: 'relative',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: colors.primaryDark,
+    marginBottom: 0,
+    backgroundColor: '#FFFFFF',
   },
-  closeBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+  foliageBg: {
+    width: '100%',
+    borderBottomLeftRadius: 140,
+    borderBottomRightRadius: 140,
+    overflow: 'hidden',
+  },
+  foliageImage: {
+    borderBottomLeftRadius: 140,
+    borderBottomRightRadius: 140,
+  },
+  foliageOverlay: {
+    width: '100%',
+    backgroundColor: 'rgba(6, 35, 22, 0.70)',
+    borderBottomLeftRadius: 140,
+    borderBottomRightRadius: 140,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 22,
+  },
+  foliageBrandTitle: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 2,
+    textShadowColor: 'rgba(0, 0, 0, 0.6)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
+  },
+  foliageDivider: {
+    width: 50,
+    height: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    marginVertical: 8,
+    borderRadius: 1,
+  },
+  foliageBrandSubtitle: {
+    fontSize: 12,
+    color: '#E2E8F0',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  topRightCloseBtn: {
+    position: 'absolute',
+    right: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#FFFFFF',
+
+  scrollContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
   },
   scrollContent: {
-    flexGrow: 1,
-    backgroundColor: colors.background,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 20,
+    backgroundColor: '#FFFFFF',
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: rounded.lg,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    ...shadows.card,
+  cleanBody: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 20,
+    paddingTop: 16,
   },
-  label: {
+
+  // Profile Header Block
+  profileHeaderBlock: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  profileAvatarBox: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    backgroundColor: '#EEF3F0',
+    borderWidth: 2.5,
+    borderColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  profileAvatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 46,
+  },
+  avatarPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileAvatarCameraBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  avatarHintText: {
     fontSize: 12,
     fontWeight: '600',
     color: colors.textSecondary,
-    marginBottom: 4,
+    marginTop: 8,
+  },
+
+  // Branch Info Card
+  locationSelectorCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 14,
+    width: '100%',
+  },
+  locationSelectorLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.textMuted,
+    letterSpacing: 0.8,
+  },
+  locationSelectorValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginTop: 2,
+  },
+  locationTagBadge: {
+    backgroundColor: colors.mintSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  locationTagBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+
+  // Fields Section
+  fieldsSection: {
+    width: '100%',
+  },
+  sectionHeading: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.textPrimary,
+    marginBottom: 6,
+    marginTop: 4,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 6,
     marginTop: 10,
   },
-  input: {
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: rounded.md,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: colors.textPrimary,
+  inputWrap: {
+    backgroundColor: '#EEF3F0',
+    borderRadius: 9999,
+    paddingHorizontal: 20,
+    height: 52,
+    justifyContent: 'center',
+    marginBottom: 4,
   },
+  textAreaWrap: {
+    height: 76,
+    borderRadius: 20,
+    paddingTop: 12,
+    paddingBottom: 12,
+    justifyContent: 'flex-start',
+  },
+  textInput: {
+    fontSize: 15,
+    color: colors.textPrimary,
+    fontWeight: '500',
+  },
+  textAreaInput: {
+    height: 52,
+    textAlignVertical: 'top',
+  },
+
+  // Title Chips
+  titleChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 6,
+  },
+  titleChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: rounded.full,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FAFC',
+  },
+  titleChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  titleChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  titleChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+
+  // Row Inputs
+  rowInputs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  // Gender Buttons
   genderRow: {
     flexDirection: 'row',
-    gap: 4,
+    backgroundColor: '#EEF3F0',
+    borderRadius: 9999,
+    padding: 3,
+    height: 52,
+    alignItems: 'center',
   },
   genderBtn: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: rounded.sm,
-    backgroundColor: colors.surfaceAlt,
+    height: 46,
+    borderRadius: 9999,
+    justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   genderBtnActive: {
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   genderBtnText: {
-    fontSize: 11,
-    color: colors.textSecondary,
+    fontSize: 12,
     fontWeight: '600',
+    color: colors.textSecondary,
   },
   genderBtnTextActive: {
     color: '#FFFFFF',
     fontWeight: '700',
   },
-  saveBtn: {
-    backgroundColor: colors.primary,
-    borderRadius: 14,
-    height: 50,
+
+  // Measurement Card Section
+  measurementSectionCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  measHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  measIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.mintSoft,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 24,
-    marginBottom: 10,
-    ...shadows.soft,
   },
-  saveBtnText: {
-    color: '#FFFFFF',
+  measSectionTitle: {
     fontSize: 15,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  measSectionSubtitle: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  customFieldsSection: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  customFieldsHeading: {
+    fontSize: 13,
     fontWeight: '700',
-    letterSpacing: 0.5,
+    color: colors.primary,
+    marginBottom: 6,
+  },
+
+  // Action Button
+  saveActionBtn: {
+    height: 52,
+    backgroundColor: colors.primary,
+    borderRadius: 9999,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 16,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.24,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  saveActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 0.4,
   },
 });

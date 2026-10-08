@@ -47,6 +47,9 @@ export async function initDatabase(): Promise<void> {
   try {
     await db.runAsync('ALTER TABLE trainers ADD COLUMN role TEXT;');
   } catch {}
+  try {
+    await db.runAsync('ALTER TABLE members ADD COLUMN title TEXT;');
+  } catch {}
 
   // 3. Seed Pre-populated Exercises Dictionary atomically
   try {

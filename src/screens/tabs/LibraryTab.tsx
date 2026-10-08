@@ -186,7 +186,7 @@ export const LibraryTab: React.FC = () => {
             <TextInput
               style={styles.modalInput}
               placeholder="e.g. Body Fat %, Forearms, Thigh"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor="#8B9E93"
               value={fieldName}
               onChangeText={setFieldName}
             />
@@ -313,14 +313,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary,
-    paddingHorizontal: 16,
-    height: 42,
-    borderRadius: 14,
+    paddingHorizontal: 18,
+    height: 50,
+    borderRadius: 9999,
     gap: 6,
     ...shadows.soft,
   },
   addBtnSmallText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.3,
@@ -437,13 +437,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   modalInput: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: rounded.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 14,
+    backgroundColor: '#EEF3F0',
+    borderRadius: 9999,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    fontSize: 15,
     color: colors.textPrimary,
     marginBottom: 8,
   },
@@ -479,29 +477,29 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   cancelBtn: {
-    paddingHorizontal: 16,
-    height: 48,
-    borderRadius: 14,
+    paddingHorizontal: 20,
+    height: 52,
+    borderRadius: 9999,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#EEF3F0',
   },
   cancelBtnText: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.textSecondary,
     fontWeight: '700',
   },
   saveBtn: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 22,
-    height: 48,
-    borderRadius: 14,
+    paddingHorizontal: 28,
+    height: 52,
+    borderRadius: 9999,
     justifyContent: 'center',
     alignItems: 'center',
     ...shadows.soft,
   },
   saveBtnText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.4,

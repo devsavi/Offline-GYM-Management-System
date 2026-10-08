@@ -14,7 +14,9 @@ import {
   ImageBackground,
   Dimensions,
   Animated,
+  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useGymStore } from '../store/useGymStore';
@@ -22,7 +24,7 @@ import { colors, rounded, shadows, buttonStyles } from '../theme/colors';
 import { trainerService } from '../database/services/trainerService';
 import { Location } from '../types';
 
-const BG_IMAGE = require('../../public/home_bg.jpg');
+const TOP_BAR_BG = require('../../public/top_bar.webp');
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface TrainerProfileModalProps {
@@ -56,6 +58,8 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
     lockApp,
     clearAllData,
   } = useGymStore();
+
+  const insets = useSafeAreaInsets();
 
   const [activeCategory, setActiveCategory] = useState<ProfileCategory>('personal');
 
@@ -381,26 +385,25 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
       visible={visible}
       animationType="slide"
       presentationStyle="fullScreen"
+      statusBarTranslucent={true}
       onRequestClose={onClose}
     >
+      <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.screenContainer}
       >
-        <ScrollView
-          style={styles.scrollContainer}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* ── TOP FOLIAGE HERO WITH CURVED ARC ── */}
-          <View style={styles.heroFoliageContainer}>
+        {/* ── TOP HERO WITH CURVED ARC (Fixed header, seamless status bar extension) ── */}
+        <View style={styles.fixedHeaderWrap}>
+          <View style={[styles.heroFoliageContainer, { minHeight: 180 + insets.top }]}>
             <ImageBackground
-              source={BG_IMAGE}
-              style={styles.foliageBg}
+              source={TOP_BAR_BG}
+              style={[styles.foliageBg, { minHeight: 180 + insets.top }]}
+              imageStyle={styles.foliageImage}
               resizeMode="cover"
             >
-              <View style={styles.foliageOverlay}>
+              <View style={[styles.foliageOverlay, { paddingTop: insets.top + 16, minHeight: 180 + insets.top }]}>
                 <Text style={styles.foliageBrandTitle}>GripState</Text>
                 <View style={styles.foliageDivider} />
                 <Text style={styles.foliageBrandSubtitle}>
@@ -409,9 +412,9 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
               </View>
             </ImageBackground>
 
-            {/* Top Right Close 'X' Button */}
+            {/* Top Right Close 'X' Button — aligned with status bar inset */}
             <TouchableOpacity
-              style={styles.topRightCloseBtn}
+              style={[styles.topRightCloseBtn, { top: insets.top + 12 }]}
               onPress={onClose}
               activeOpacity={0.8}
               accessibilityLabel="Close Profile"
@@ -419,7 +422,14 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
               <Ionicons name="close" size={22} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
+        </View>
 
+        <ScrollView
+          style={styles.scrollContainer}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           {/* ── WHITE AREA (No card containers - clean normal background) ── */}
           <View style={styles.whiteBody}>
             {/* Profile Avatar & Name Section */}
@@ -546,443 +556,443 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
             >
               {/* ── 1. PERSONAL DETAILS ── */}
               {activeCategory === 'personal' && (
-              <View style={styles.fieldsSection}>
-                {/* Title Chips */}
-                <Text style={styles.inputLabel}>Salutation / Title</Text>
-                <View style={styles.titleChipRow}>
-                  {TITLE_OPTIONS.map((t) => (
-                    <TouchableOpacity
-                      key={t}
-                      style={[
-                        styles.titleChip,
-                        title === t && styles.titleChipActive,
-                      ]}
-                      onPress={() => setTitle(t)}
-                    >
-                      <Text
+                <View style={styles.fieldsSection}>
+                  {/* Title Chips */}
+                  <Text style={styles.inputLabel}>Salutation / Title</Text>
+                  <View style={styles.titleChipRow}>
+                    {TITLE_OPTIONS.map((t) => (
+                      <TouchableOpacity
+                        key={t}
                         style={[
-                          styles.titleChipText,
-                          title === t && styles.titleChipTextActive,
+                          styles.titleChip,
+                          title === t && styles.titleChipActive,
                         ]}
+                        onPress={() => setTitle(t)}
                       >
-                        {t}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {/* First Name */}
-                <Text style={styles.inputLabel}>First Name *</Text>
-                <View style={styles.inputWrap}>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="e.g. John"
-                    placeholderTextColor={colors.textMuted}
-                    value={firstName}
-                    onChangeText={setFirstName}
-                    autoCapitalize="words"
-                  />
-                </View>
-
-                {/* Last Name */}
-                <Text style={styles.inputLabel}>Last Name</Text>
-                <View style={styles.inputWrap}>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="e.g. Doe"
-                    placeholderTextColor={colors.textMuted}
-                    value={lastName}
-                    onChangeText={setLastName}
-                    autoCapitalize="words"
-                  />
-                </View>
-
-                {/* Role */}
-                <Text style={styles.inputLabel}>Role / Position</Text>
-                <View style={styles.inputWrap}>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="e.g. Head Coach, Gym Owner"
-                    placeholderTextColor={colors.textMuted}
-                    value={role}
-                    onChangeText={setRole}
-                    autoCapitalize="words"
-                  />
-                </View>
-
-                {/* Age */}
-                <Text style={styles.inputLabel}>Age</Text>
-                <View style={styles.inputWrap}>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="e.g. 32"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="numeric"
-                    value={age}
-                    onChangeText={setAge}
-                  />
-                </View>
-
-                {/* Phone */}
-                <Text style={styles.inputLabel}>Phone Number</Text>
-                <View style={styles.inputWrap}>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="e.g. +1 555-0192"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="phone-pad"
-                    value={phone}
-                    onChangeText={setPhone}
-                  />
-                </View>
-
-                {/* Email */}
-                <Text style={styles.inputLabel}>Email Address</Text>
-                <View style={styles.inputWrap}>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="e.g. coach@fitness.com"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    value={email}
-                    onChangeText={setEmail}
-                  />
-                </View>
-
-                {/* Address */}
-                <Text style={styles.inputLabel}>Address</Text>
-                <View style={[styles.inputWrap, { height: 80, alignItems: 'flex-start', paddingTop: 12 }]}>
-                  <TextInput
-                    style={[styles.textInput, { height: 60, textAlignVertical: 'top' }]}
-                    placeholder="e.g. 124 Park Ave, Suite 4B"
-                    placeholderTextColor={colors.textMuted}
-                    multiline
-                    value={address}
-                    onChangeText={setAddress}
-                  />
-                </View>
-
-                {/* Save Button */}
-                <TouchableOpacity
-                  style={[buttonStyles.primary, styles.actionButtonUnified]}
-                  onPress={handleSavePersonal}
-                  disabled={isSavingPersonal}
-                  activeOpacity={0.85}
-                >
-                  <Text style={buttonStyles.text}>
-                    {isSavingPersonal ? 'SAVING PROFILE...' : 'SAVE CHANGES'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* ── 2. LOCATIONS (Professional, zero icons, normal background) ── */}
-            {activeCategory === 'location' && (
-              <View style={styles.fieldsSection}>
-                <Text style={styles.sectionHeading}>Registered Gym Branches ({locations.length})</Text>
-
-                {locations.map((loc) => {
-                  const isActive = selectedLocation?.id === loc.id;
-                  const isEditing = editingLocId === loc.id;
-
-                  if (isEditing) {
-                    return (
-                      <View key={loc.id} style={styles.editBranchBlock}>
-                        <Text style={styles.editBranchTitle}>Edit Branch: {loc.name}</Text>
-                        <TextInput
-                          style={styles.inlineEditInput}
-                          placeholder="Branch Name *"
-                          value={editLocName}
-                          onChangeText={setEditLocName}
-                        />
-                        <TextInput
-                          style={styles.inlineEditInput}
-                          placeholder="Branch Address"
-                          value={editLocAddress}
-                          onChangeText={setEditLocAddress}
-                        />
-                        <TextInput
-                          style={styles.inlineEditInput}
-                          placeholder="Description"
-                          value={editLocDesc}
-                          onChangeText={setEditLocDesc}
-                        />
-                        <View style={styles.editBranchButtonsRow}>
-                          <TouchableOpacity
-                            style={[buttonStyles.secondary, { height: 42, paddingHorizontal: 16 }]}
-                            onPress={() => setEditingLocId(null)}
-                          >
-                            <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary }}>
-                              Cancel
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[buttonStyles.primary, { height: 42, paddingHorizontal: 20 }]}
-                            onPress={handleSaveEditLocation}
-                          >
-                            <Text style={buttonStyles.text}>Save</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    );
-                  }
-
-                  return (
-                    <TouchableOpacity
-                      key={loc.id}
-                      style={[
-                        styles.branchListItem,
-                        isActive && styles.branchListItemActive,
-                      ]}
-                      onPress={() => selectLocation(loc)}
-                      activeOpacity={0.8}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <View style={styles.branchNameRow}>
-                          <Text
-                            style={[
-                              styles.branchNameText,
-                              isActive && { color: colors.primary, fontWeight: '700' },
-                            ]}
-                          >
-                            {loc.name}
-                          </Text>
-                          {isActive && (
-                            <View style={styles.activePillBadge}>
-                              <Text style={styles.activePillText}>ACTIVE</Text>
-                            </View>
-                          )}
-                        </View>
-                        {loc.address ? (
-                          <Text style={styles.branchAddressText}>{loc.address}</Text>
-                        ) : null}
-                        <Text style={styles.branchMetaText}>
-                          {loc.member_count ?? 0} members • {loc.description || 'Gym Branch'}
-                        </Text>
-                      </View>
-
-                      {/* Icon Actions for Edit and Delete */}
-                      <View style={styles.branchIconActionsRow}>
-                        <TouchableOpacity
-                          style={styles.branchIconActionBtn}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            handleStartEditLocation(loc);
-                          }}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          accessibilityLabel="Edit Branch"
+                        <Text
+                          style={[
+                            styles.titleChipText,
+                            title === t && styles.titleChipTextActive,
+                          ]}
                         >
-                          <Ionicons name="pencil-outline" size={17} color="#FFFFFF" />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={styles.branchIconActionBtn}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            handleDeleteLocation(loc.id, loc.name);
-                          }}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          accessibilityLabel="Delete Branch"
-                        >
-                          <Ionicons name="trash-outline" size={17} color="#FFFFFF" />
-                        </TouchableOpacity>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-
-                {/* Add New Branch Button */}
-                {!isAddingLoc ? (
-                  <TouchableOpacity
-                    style={[buttonStyles.outline, styles.actionButtonUnified, { borderColor: colors.primary }]}
-                    onPress={() => setIsAddingLoc(true)}
-                  >
-                    <Text style={[buttonStyles.text, { color: colors.primary }]}>
-                      ADD NEW GYM BRANCH
-                    </Text>
-                  </TouchableOpacity>
-                ) : (
-                  <View style={styles.newBranchForm}>
-                    <Text style={styles.inputLabel}>New Branch Name *</Text>
-                    <View style={styles.inputWrap}>
-                      <TextInput
-                        style={styles.textInput}
-                        placeholder="e.g. Uptown Power Gym"
-                        placeholderTextColor={colors.textMuted}
-                        value={newLocName}
-                        onChangeText={setNewLocName}
-                      />
-                    </View>
-
-                    <Text style={styles.inputLabel}>Branch Address</Text>
-                    <View style={styles.inputWrap}>
-                      <TextInput
-                        style={styles.textInput}
-                        placeholder="e.g. 500 Market St, Floor 2"
-                        placeholderTextColor={colors.textMuted}
-                        value={newLocAddress}
-                        onChangeText={setNewLocAddress}
-                      />
-                    </View>
-
-                    <Text style={styles.inputLabel}>Description / Notes</Text>
-                    <View style={styles.inputWrap}>
-                      <TextInput
-                        style={styles.textInput}
-                        placeholder="e.g. Open 6am - 10pm"
-                        placeholderTextColor={colors.textMuted}
-                        value={newLocDesc}
-                        onChangeText={setNewLocDesc}
-                      />
-                    </View>
-
-                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 14 }}>
-                      <TouchableOpacity
-                        style={[buttonStyles.secondary, { flex: 1 }]}
-                        onPress={() => setIsAddingLoc(false)}
-                      >
-                        <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textSecondary }}>
-                          Cancel
+                          {t}
                         </Text>
                       </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[buttonStyles.primary, { flex: 1 }]}
-                        onPress={handleCreateLocation}
-                      >
-                        <Text style={buttonStyles.text}>SAVE BRANCH</Text>
-                      </TouchableOpacity>
-                    </View>
+                    ))}
                   </View>
-                )}
-              </View>
-            )}
 
-            {/* ── 3. PASSWORD / PIN (No container card - normal background) ── */}
-            {activeCategory === 'password' && (
-              <View style={styles.fieldsSection}>
-                <View
-                  style={[
-                    styles.pinStatusBanner,
-                    {
-                      backgroundColor: hasExistingPin ? colors.mintSoft : '#FEF3C7',
-                      borderColor: hasExistingPin ? colors.mint : '#F59E0B',
-                    },
-                  ]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.pinStatusTitle}>
-                      {hasExistingPin ? 'App PIN Protection: Active' : 'No PIN Set'}
-                    </Text>
-                    <Text style={styles.pinStatusSubtitle}>
-                      {hasExistingPin
-                        ? 'App asks for this PIN upon launch.'
-                        : 'Anyone who opens this app can view member data.'}
-                    </Text>
+                  {/* First Name */}
+                  <Text style={styles.inputLabel}>First Name *</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. John"
+                      placeholderTextColor={colors.textMuted}
+                      value={firstName}
+                      onChangeText={setFirstName}
+                      autoCapitalize="words"
+                    />
                   </View>
-                </View>
 
-                {/* If existing PIN, require Current PIN */}
-                {hasExistingPin && (
-                  <>
-                    <Text style={styles.inputLabel}>Current 4-Digit PIN *</Text>
-                    <View style={styles.inputWrap}>
-                      <TextInput
-                        style={styles.textInput}
-                        placeholder="••••"
-                        placeholderTextColor={colors.textMuted}
-                        keyboardType="numeric"
-                        secureTextEntry
-                        maxLength={4}
-                        value={currentPin}
-                        onChangeText={setCurrentPin}
-                      />
-                    </View>
-                  </>
-                )}
+                  {/* Last Name */}
+                  <Text style={styles.inputLabel}>Last Name</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. Doe"
+                      placeholderTextColor={colors.textMuted}
+                      value={lastName}
+                      onChangeText={setLastName}
+                      autoCapitalize="words"
+                    />
+                  </View>
 
-                {/* New PIN */}
-                <Text style={styles.inputLabel}>
-                  {hasExistingPin ? 'New 4-Digit PIN *' : 'Set 4-Digit PIN *'}
-                </Text>
-                <View style={styles.inputWrap}>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="••••"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="numeric"
-                    secureTextEntry
-                    maxLength={4}
-                    value={newPin}
-                    onChangeText={setNewPin}
-                  />
-                </View>
+                  {/* Role */}
+                  <Text style={styles.inputLabel}>Role / Position</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. Head Coach, Gym Owner"
+                      placeholderTextColor={colors.textMuted}
+                      value={role}
+                      onChangeText={setRole}
+                      autoCapitalize="words"
+                    />
+                  </View>
 
-                {/* Confirm New PIN */}
-                <Text style={styles.inputLabel}>Confirm New 4-Digit PIN *</Text>
-                <View style={styles.inputWrap}>
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="••••"
-                    placeholderTextColor={colors.textMuted}
-                    keyboardType="numeric"
-                    secureTextEntry
-                    maxLength={4}
-                    value={confirmNewPin}
-                    onChangeText={setConfirmNewPin}
-                  />
-                </View>
+                  {/* Age */}
+                  <Text style={styles.inputLabel}>Age</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. 32"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="numeric"
+                      value={age}
+                      onChangeText={setAge}
+                    />
+                  </View>
 
-                {/* Update PIN Button with UNIFIED BUTTON UI */}
-                <TouchableOpacity
-                  style={[buttonStyles.primary, styles.actionButtonUnified]}
-                  onPress={handleUpdatePin}
-                  disabled={isSavingPin}
-                  activeOpacity={0.85}
-                >
-                  <Text style={buttonStyles.text}>
-                    {isSavingPin ? 'UPDATING PIN...' : 'UPDATE SECURITY PIN'}
-                  </Text>
-                </TouchableOpacity>
+                  {/* Phone */}
+                  <Text style={styles.inputLabel}>Phone Number</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. +1 555-0192"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="phone-pad"
+                      value={phone}
+                      onChangeText={setPhone}
+                    />
+                  </View>
 
-                {/* Lock App Now Button */}
-                {hasExistingPin && (
+                  {/* Email */}
+                  <Text style={styles.inputLabel}>Email Address</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="e.g. coach@fitness.com"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      value={email}
+                      onChangeText={setEmail}
+                    />
+                  </View>
+
+                  {/* Address */}
+                  <Text style={styles.inputLabel}>Address</Text>
+                  <View style={[styles.inputWrap, { height: 80, alignItems: 'flex-start', paddingTop: 12 }]}>
+                    <TextInput
+                      style={[styles.textInput, { height: 60, textAlignVertical: 'top' }]}
+                      placeholder="e.g. 124 Park Ave, Suite 4B"
+                      placeholderTextColor={colors.textMuted}
+                      multiline
+                      value={address}
+                      onChangeText={setAddress}
+                    />
+                  </View>
+
+                  {/* Save Button */}
                   <TouchableOpacity
-                    style={[buttonStyles.secondary, styles.actionButtonUnified, { marginTop: 12 }]}
-                    onPress={handleLockNow}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[buttonStyles.text, { color: colors.primary }]}>
-                      LOCK APP NOW (TEST PIN PROMPT)
-                    </Text>
-                  </TouchableOpacity>
-                )}
-
-                {hasExistingPin && (
-                  <TouchableOpacity
-                    style={styles.removePinBtn}
-                    onPress={handleRemovePin}
-                  >
-                    <Text style={styles.removePinBtnText}>Disable PIN Protection</Text>
-                  </TouchableOpacity>
-                )}
-
-                {/* ─── DANGER ZONE ─── */}
-                <View style={styles.dangerZoneBlock}>
-                  <Text style={styles.dangerZoneLabel}>DANGER ZONE</Text>
-                  <TouchableOpacity
-                    style={[buttonStyles.danger, styles.actionButtonUnified]}
-                    onPress={handleResetAllData}
+                    style={[buttonStyles.primary, styles.actionButtonUnified]}
+                    onPress={handleSavePersonal}
+                    disabled={isSavingPersonal}
                     activeOpacity={0.85}
                   >
-                    <Text style={buttonStyles.text}>RESET ALL APP DATA</Text>
+                    <Text style={buttonStyles.text}>
+                      {isSavingPersonal ? 'SAVING PROFILE...' : 'SAVE CHANGES'}
+                    </Text>
                   </TouchableOpacity>
-                  <Text style={styles.dangerZoneCaption}>
-                    Permanently deletes all members, locations, payments and profile data.
-                  </Text>
                 </View>
-              </View>
-            )}
+              )}
+
+              {/* ── 2. LOCATIONS (Professional, zero icons, normal background) ── */}
+              {activeCategory === 'location' && (
+                <View style={styles.fieldsSection}>
+                  <Text style={styles.sectionHeading}>Registered Gym Branches ({locations.length})</Text>
+
+                  {locations.map((loc) => {
+                    const isActive = selectedLocation?.id === loc.id;
+                    const isEditing = editingLocId === loc.id;
+
+                    if (isEditing) {
+                      return (
+                        <View key={loc.id} style={styles.editBranchBlock}>
+                          <Text style={styles.editBranchTitle}>Edit Branch: {loc.name}</Text>
+                          <TextInput
+                            style={styles.inlineEditInput}
+                            placeholder="Branch Name *"
+                            value={editLocName}
+                            onChangeText={setEditLocName}
+                          />
+                          <TextInput
+                            style={styles.inlineEditInput}
+                            placeholder="Branch Address"
+                            value={editLocAddress}
+                            onChangeText={setEditLocAddress}
+                          />
+                          <TextInput
+                            style={styles.inlineEditInput}
+                            placeholder="Description"
+                            value={editLocDesc}
+                            onChangeText={setEditLocDesc}
+                          />
+                          <View style={styles.editBranchButtonsRow}>
+                            <TouchableOpacity
+                              style={[buttonStyles.secondary, { height: 42, paddingHorizontal: 16 }]}
+                              onPress={() => setEditingLocId(null)}
+                            >
+                              <Text style={{ fontSize: 13, fontWeight: '700', color: colors.textSecondary }}>
+                                Cancel
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[buttonStyles.primary, { height: 42, paddingHorizontal: 20 }]}
+                              onPress={handleSaveEditLocation}
+                            >
+                              <Text style={buttonStyles.text}>Save</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      );
+                    }
+
+                    return (
+                      <TouchableOpacity
+                        key={loc.id}
+                        style={[
+                          styles.branchListItem,
+                          isActive && styles.branchListItemActive,
+                        ]}
+                        onPress={() => selectLocation(loc)}
+                        activeOpacity={0.8}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <View style={styles.branchNameRow}>
+                            <Text
+                              style={[
+                                styles.branchNameText,
+                                isActive && { color: colors.primary, fontWeight: '700' },
+                              ]}
+                            >
+                              {loc.name}
+                            </Text>
+                            {isActive && (
+                              <View style={styles.activePillBadge}>
+                                <Text style={styles.activePillText}>ACTIVE</Text>
+                              </View>
+                            )}
+                          </View>
+                          {loc.address ? (
+                            <Text style={styles.branchAddressText}>{loc.address}</Text>
+                          ) : null}
+                          <Text style={styles.branchMetaText}>
+                            {loc.member_count ?? 0} members • {loc.description || 'Gym Branch'}
+                          </Text>
+                        </View>
+
+                        {/* Icon Actions for Edit and Delete */}
+                        <View style={styles.branchIconActionsRow}>
+                          <TouchableOpacity
+                            style={styles.branchIconActionBtn}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleStartEditLocation(loc);
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            accessibilityLabel="Edit Branch"
+                          >
+                            <Ionicons name="pencil-outline" size={17} color="#FFFFFF" />
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.branchIconActionBtn}
+                            onPress={(e) => {
+                              e.stopPropagation();
+                              handleDeleteLocation(loc.id, loc.name);
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            accessibilityLabel="Delete Branch"
+                          >
+                            <Ionicons name="trash-outline" size={17} color="#FFFFFF" />
+                          </TouchableOpacity>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+
+                  {/* Add New Branch Button */}
+                  {!isAddingLoc ? (
+                    <TouchableOpacity
+                      style={[buttonStyles.outline, styles.actionButtonUnified, { borderColor: colors.primary }]}
+                      onPress={() => setIsAddingLoc(true)}
+                    >
+                      <Text style={[buttonStyles.text, { color: colors.primary }]}>
+                        ADD NEW GYM BRANCH
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.newBranchForm}>
+                      <Text style={styles.inputLabel}>New Branch Name *</Text>
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          style={styles.textInput}
+                          placeholder="e.g. Uptown Power Gym"
+                          placeholderTextColor={colors.textMuted}
+                          value={newLocName}
+                          onChangeText={setNewLocName}
+                        />
+                      </View>
+
+                      <Text style={styles.inputLabel}>Branch Address</Text>
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          style={styles.textInput}
+                          placeholder="e.g. 500 Market St, Floor 2"
+                          placeholderTextColor={colors.textMuted}
+                          value={newLocAddress}
+                          onChangeText={setNewLocAddress}
+                        />
+                      </View>
+
+                      <Text style={styles.inputLabel}>Description / Notes</Text>
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          style={styles.textInput}
+                          placeholder="e.g. Open 6am - 10pm"
+                          placeholderTextColor={colors.textMuted}
+                          value={newLocDesc}
+                          onChangeText={setNewLocDesc}
+                        />
+                      </View>
+
+                      <View style={{ flexDirection: 'row', gap: 12, marginTop: 14 }}>
+                        <TouchableOpacity
+                          style={[buttonStyles.secondary, { flex: 1 }]}
+                          onPress={() => setIsAddingLoc(false)}
+                        >
+                          <Text style={{ fontSize: 14, fontWeight: '700', color: colors.textSecondary }}>
+                            Cancel
+                          </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[buttonStyles.primary, { flex: 1 }]}
+                          onPress={handleCreateLocation}
+                        >
+                          <Text style={buttonStyles.text}>SAVE BRANCH</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* ── 3. PASSWORD / PIN (No container card - normal background) ── */}
+              {activeCategory === 'password' && (
+                <View style={styles.fieldsSection}>
+                  <View
+                    style={[
+                      styles.pinStatusBanner,
+                      {
+                        backgroundColor: hasExistingPin ? colors.mintSoft : '#FEF3C7',
+                        borderColor: hasExistingPin ? colors.mint : '#F59E0B',
+                      },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.pinStatusTitle}>
+                        {hasExistingPin ? 'App PIN Protection: Active' : 'No PIN Set'}
+                      </Text>
+                      <Text style={styles.pinStatusSubtitle}>
+                        {hasExistingPin
+                          ? 'App asks for this PIN upon launch.'
+                          : 'Anyone who opens this app can view member data.'}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* If existing PIN, require Current PIN */}
+                  {hasExistingPin && (
+                    <>
+                      <Text style={styles.inputLabel}>Current 4-Digit PIN *</Text>
+                      <View style={styles.inputWrap}>
+                        <TextInput
+                          style={styles.textInput}
+                          placeholder="••••"
+                          placeholderTextColor={colors.textMuted}
+                          keyboardType="numeric"
+                          secureTextEntry
+                          maxLength={4}
+                          value={currentPin}
+                          onChangeText={setCurrentPin}
+                        />
+                      </View>
+                    </>
+                  )}
+
+                  {/* New PIN */}
+                  <Text style={styles.inputLabel}>
+                    {hasExistingPin ? 'New 4-Digit PIN *' : 'Set 4-Digit PIN *'}
+                  </Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="••••"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="numeric"
+                      secureTextEntry
+                      maxLength={4}
+                      value={newPin}
+                      onChangeText={setNewPin}
+                    />
+                  </View>
+
+                  {/* Confirm New PIN */}
+                  <Text style={styles.inputLabel}>Confirm New 4-Digit PIN *</Text>
+                  <View style={styles.inputWrap}>
+                    <TextInput
+                      style={styles.textInput}
+                      placeholder="••••"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="numeric"
+                      secureTextEntry
+                      maxLength={4}
+                      value={confirmNewPin}
+                      onChangeText={setConfirmNewPin}
+                    />
+                  </View>
+
+                  {/* Update PIN Button with UNIFIED BUTTON UI */}
+                  <TouchableOpacity
+                    style={[buttonStyles.primary, styles.actionButtonUnified]}
+                    onPress={handleUpdatePin}
+                    disabled={isSavingPin}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={buttonStyles.text}>
+                      {isSavingPin ? 'UPDATING PIN...' : 'UPDATE SECURITY PIN'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Lock App Now Button */}
+                  {hasExistingPin && (
+                    <TouchableOpacity
+                      style={[buttonStyles.secondary, styles.actionButtonUnified, { marginTop: 12 }]}
+                      onPress={handleLockNow}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[buttonStyles.text, { color: colors.primary }]}>
+                        LOCK APP NOW (TEST PIN PROMPT)
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {hasExistingPin && (
+                    <TouchableOpacity
+                      style={styles.removePinBtn}
+                      onPress={handleRemovePin}
+                    >
+                      <Text style={styles.removePinBtnText}>Disable PIN Protection</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* ─── DANGER ZONE ─── */}
+                  <View style={styles.dangerZoneBlock}>
+                    <Text style={styles.dangerZoneLabel}>DANGER ZONE</Text>
+                    <TouchableOpacity
+                      style={[buttonStyles.danger, styles.actionButtonUnified]}
+                      onPress={handleResetAllData}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={buttonStyles.text}>RESET ALL APP DATA</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.dangerZoneCaption}>
+                      Permanently deletes all members, locations, payments and profile data.
+                    </Text>
+                  </View>
+                </View>
+              )}
             </Animated.View>
           </View>
         </ScrollView>
@@ -1076,28 +1086,39 @@ const styles = StyleSheet.create({
     paddingBottom: 50,
   },
 
-  // ── FOLIAGE HERO WITH CURVED ARC ──
+  // ── HERO WITH CURVED ARC ──
+  fixedHeaderWrap: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    zIndex: 20,
+  },
   heroFoliageContainer: {
     width: '100%',
-    height: 200,
     position: 'relative',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 0,
+    backgroundColor: '#FFFFFF',
   },
   foliageBg: {
     width: '100%',
-    height: 200,
-    borderBottomLeftRadius: 130,
-    borderBottomRightRadius: 130,
+    borderBottomLeftRadius: 140,
+    borderBottomRightRadius: 140,
     overflow: 'hidden',
   },
+  foliageImage: {
+    borderBottomLeftRadius: 140,
+    borderBottomRightRadius: 140,
+  },
   foliageOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(5, 18, 10, 0.45)',
+    width: '100%',
+    backgroundColor: 'rgba(6, 35, 22, 0.70)',
+    borderBottomLeftRadius: 140,
+    borderBottomRightRadius: 140,
+    overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'android' ? 24 : 36,
+    paddingBottom: 22,
   },
   foliageBrandTitle: {
     fontSize: 26,
@@ -1125,7 +1146,6 @@ const styles = StyleSheet.create({
   // Close 'X' button at TOP RIGHT
   topRightCloseBtn: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? 36 : 48,
     right: 20,
     width: 38,
     height: 38,
@@ -1141,6 +1161,7 @@ const styles = StyleSheet.create({
   // ── WHITE AREA BELOW CURVE ──
   whiteBody: {
     paddingHorizontal: 22,
+    paddingTop: 16,
     backgroundColor: '#FFFFFF',
   },
 

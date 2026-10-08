@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useGymStore } from '../../store/useGymStore';
@@ -31,6 +32,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({
     searchQuery,
     statusFilter,
     selectedLocation,
+    locationStats,
     setSearchQuery,
     setStatusFilter,
     refreshDashboard,
@@ -47,7 +49,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({
   const handleQuickCheckIn = async (member: Member) => {
     if (!selectedLocation) return;
     try {
-      await checkInService.recordCheckIn(member.id, selectedLocation.id, 'Front desk check-in');
+      await checkInService.recordCheckIn(member.id, selectedLocation.id, 'Checked In');
       Alert.alert('Checked In ✅', `${member.name} has been marked present for today.`);
       refreshDashboard();
     } catch (e: any) {
@@ -58,6 +60,9 @@ export const MembersTab: React.FC<MembersTabProps> = ({
   const renderMemberItem = ({ item }: { item: Member }) => {
     const isPaid = item.latest_payment_status === 'paid';
     const isPending = item.latest_payment_status === 'pending';
+    const itemDisplayName = item.title && !item.name.toLowerCase().startsWith(item.title.toLowerCase())
+      ? `${item.title} ${item.name}`
+      : item.name;
 
     return (
       <TouchableOpacity
@@ -66,14 +71,18 @@ export const MembersTab: React.FC<MembersTabProps> = ({
         activeOpacity={0.8}
       >
         <View style={styles.avatarBox}>
-          <Text style={styles.avatarText}>
-            {item.name.charAt(0).toUpperCase()}
-          </Text>
+          {item.photo_uri ? (
+            <Image source={{ uri: item.photo_uri }} style={styles.avatarImg} />
+          ) : (
+            <Text style={styles.avatarText}>
+              {item.name.charAt(0).toUpperCase()}
+            </Text>
+          )}
         </View>
 
         <View style={{ flex: 1, marginLeft: 12 }}>
           <View style={styles.memberNameRow}>
-            <Text style={styles.memberName}>{item.name}</Text>
+            <Text style={styles.memberName}>{itemDisplayName}</Text>
             <View
               style={[
                 styles.statusBadge,
@@ -135,14 +144,15 @@ export const MembersTab: React.FC<MembersTabProps> = ({
           </View>
         </View>
 
-        {/* Quick Check-in Icon Button */}
+        {/* Quick Check-in Button */}
         <TouchableOpacity
           style={styles.checkInButton}
           onPress={() => handleQuickCheckIn(item)}
+          activeOpacity={0.8}
           accessibilityLabel="Quick Check-in"
         >
-          <Ionicons name="checkmark-circle-outline" size={24} color={colors.accent} />
-          <Text style={styles.checkInBtnText}>Check-in</Text>
+          <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+          <Text style={styles.checkInBtnText}>Check in</Text>
         </TouchableOpacity>
       </TouchableOpacity>
     );
@@ -176,7 +186,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({
         <TextInput
           style={styles.searchInput}
           placeholder="Search by client name or phone..."
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor="#8B9E93"
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
@@ -236,9 +246,11 @@ export const MembersTab: React.FC<MembersTabProps> = ({
               <Text style={styles.emptySubtext}>
                 {searchQuery
                   ? `No matches for "${searchQuery}"`
+                  : (statusFilter !== 'all' && (locationStats?.totalMembers || 0) > 0)
+                  ? `No ${statusFilter} members found.`
                   : 'Start by registering your first gym member'}
               </Text>
-              {!searchQuery && (
+              {!searchQuery && (statusFilter === 'all' || (locationStats?.totalMembers || 0) === 0) && (
                 <TouchableOpacity
                   style={styles.emptyAddBtn}
                   onPress={onAddMember}
@@ -282,30 +294,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary,
-    paddingHorizontal: 16,
-    height: 44,
-    borderRadius: 14,
+    paddingHorizontal: 20,
+    height: 50,
+    borderRadius: 9999,
     gap: 6,
     ...shadows.soft,
   },
   addMemberBtnText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     letterSpacing: 0.3,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#EEF3F0',
     marginHorizontal: 16,
     marginVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 18,
     paddingVertical: 10,
-    borderRadius: rounded.md,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    ...shadows.soft,
+    borderRadius: 9999,
   },
   searchIcon: {
     marginRight: 8,
@@ -350,23 +359,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    borderRadius: rounded.md,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: rounded.lg,
+    padding: 16,
+    marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    ...shadows.soft,
+    borderColor: colors.borderLight,
+    ...shadows.card,
   },
   avatarBox: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: colors.mintSoft,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 26,
   },
   avatarText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
     color: colors.primary,
   },
@@ -375,26 +390,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginRight: 4,
+    marginBottom: 2,
   },
   memberName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: colors.textPrimary,
     flex: 1,
   },
   statusBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 6,
   },
   statusBadgeText: {
     fontSize: 10,
     fontWeight: '800',
+    letterSpacing: 0.5,
   },
   memberSubtitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textSecondary,
-    marginTop: 2,
+    marginBottom: 6,
   },
   memberTagsRow: {
     flexDirection: 'row',
@@ -424,15 +441,20 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   checkInButton: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingLeft: 10,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    height: 34,
+    borderRadius: 9999,
+    gap: 4,
+    marginLeft: 8,
   },
   checkInBtnText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '700',
-    color: colors.accent,
-    marginTop: 2,
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
   },
   loadingContainer: {
     flex: 1,
@@ -462,15 +484,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
-    paddingHorizontal: 22,
-    height: 48,
-    borderRadius: 14,
+    paddingHorizontal: 24,
+    height: 52,
+    borderRadius: 9999,
     marginTop: 18,
     gap: 8,
     ...shadows.soft,
   },
   emptyAddBtnText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.4,

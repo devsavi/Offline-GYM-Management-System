@@ -116,7 +116,7 @@ export const ExercisesTab: React.FC = () => {
         <TextInput
           style={styles.searchInput}
           placeholder="Search by exercise name..."
-          placeholderTextColor={colors.textMuted}
+          placeholderTextColor="#8B9E93"
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
@@ -227,7 +227,7 @@ export const ExercisesTab: React.FC = () => {
             <TextInput
               style={styles.modalInput}
               placeholder="e.g. Incline Cable Flyes"
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor="#8B9E93"
               value={customName}
               onChangeText={setCustomName}
             />
@@ -259,7 +259,7 @@ export const ExercisesTab: React.FC = () => {
             <TextInput
               style={[styles.modalInput, { height: 60 }]}
               placeholder="e.g. Set bench to 30 degrees, maintain slight elbow bend..."
-              placeholderTextColor={colors.textMuted}
+              placeholderTextColor="#8B9E93"
               multiline
               value={customDescription}
               onChangeText={setCustomDescription}
@@ -317,29 +317,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary,
-    paddingHorizontal: 16,
-    height: 44,
-    borderRadius: 14,
+    paddingHorizontal: 20,
+    height: 50,
+    borderRadius: 9999,
     gap: 6,
     ...shadows.soft,
   },
   addCustomBtnText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     letterSpacing: 0.3,
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#EEF3F0',
     marginHorizontal: 16,
     marginVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 18,
     paddingVertical: 10,
-    borderRadius: rounded.md,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderRadius: 9999,
   },
   searchInput: {
     flex: 1,
@@ -494,13 +492,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   modalInput: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: rounded.sm,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontSize: 14,
+    backgroundColor: '#EEF3F0',
+    borderRadius: 9999,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    fontSize: 15,
     color: colors.textPrimary,
     marginBottom: 8,
   },
@@ -538,29 +534,29 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   modalCancelBtn: {
-    paddingHorizontal: 16,
-    height: 48,
-    borderRadius: 14,
+    paddingHorizontal: 20,
+    height: 52,
+    borderRadius: 9999,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F1F5F9',
+    backgroundColor: '#EEF3F0',
   },
   modalCancelText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: colors.textSecondary,
   },
   modalSaveBtn: {
     backgroundColor: colors.primary,
-    paddingHorizontal: 22,
-    height: 48,
-    borderRadius: 14,
+    paddingHorizontal: 28,
+    height: 52,
+    borderRadius: 9999,
     justifyContent: 'center',
     alignItems: 'center',
     ...shadows.soft,
   },
   modalSaveText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.4,

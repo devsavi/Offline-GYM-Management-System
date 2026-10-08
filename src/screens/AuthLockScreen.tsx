@@ -15,7 +15,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { useGymStore } from '../store/useGymStore';
 import { colors } from '../theme/colors';
 
-const BG_IMAGE = require('../../public/home_bg.jpg');
+const BG_IMAGE = require('../../public/home_bg.webp');
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface AuthLockScreenProps {
@@ -233,21 +233,24 @@ const styles = StyleSheet.create({
   },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(5, 14, 7, 0.45)',
+    backgroundColor: 'rgba(0,0,0,0.32)',
   },
 
   // ── EXACT CENTER TITLE BLOCK MATCHING GET STARTED PAGE ──
   heroCenterBlock: {
-    flex: 1,
+    position: 'absolute',
+    top: '18%',
+    left: 24,
+    right: 24,
     alignItems: 'center',
-    paddingTop: 60,
   },
   titleWrapper: {
     alignItems: 'center',
+    width: '100%',
   },
   heroAppName: {
-    fontSize: 52,
-    fontWeight: '800',
+    fontSize: 48,
+    fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: -1,
     textAlign: 'center',
@@ -256,10 +259,10 @@ const styles = StyleSheet.create({
     textShadowRadius: 8,
   },
   heroTagline: {
-    fontSize: 17,
+    fontSize: 18,
     color: 'rgba(255,255,255,0.88)',
-    marginTop: 8,
-    lineHeight: 24,
+    marginTop: 10,
+    lineHeight: 26,
     fontWeight: '500',
     textAlign: 'center',
     textShadowColor: 'rgba(0,0,0,0.7)',

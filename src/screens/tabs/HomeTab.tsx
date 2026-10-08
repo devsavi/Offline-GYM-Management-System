@@ -44,7 +44,7 @@ export const HomeTab: React.FC<HomeTabProps> = ({
   const handleQuickCheckIn = async (member: Member) => {
     if (!selectedLocation) return;
     try {
-      await checkInService.recordCheckIn(member.id, selectedLocation.id, 'Front desk check-in');
+      await checkInService.recordCheckIn(member.id, selectedLocation.id, 'Checked In');
       Alert.alert('Checked In ✅', `${member.name} has been marked present for today.`);
       refreshDashboard();
     } catch (e: any) {
@@ -194,9 +194,11 @@ export const HomeTab: React.FC<HomeTabProps> = ({
               <TouchableOpacity
                 style={styles.recentCheckInBtn}
                 onPress={() => handleQuickCheckIn(item)}
+                activeOpacity={0.8}
+                accessibilityLabel="Quick Check-in"
               >
-                <Ionicons name="checkmark-circle-outline" size={22} color={colors.accent} />
-                <Text style={styles.recentCheckInText}>Check-in</Text>
+                <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                <Text style={styles.recentCheckInText}>Check in</Text>
               </TouchableOpacity>
             </TouchableOpacity>
           );
@@ -338,14 +340,20 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   recentCheckInBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    height: 34,
+    borderRadius: 9999,
+    gap: 4,
+    marginLeft: 8,
   },
   recentCheckInText: {
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: '700',
-    color: colors.accent,
-    marginTop: 1,
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
   },
   emptyRecentCard: {
     backgroundColor: '#FFFFFF',
@@ -364,16 +372,16 @@ const styles = StyleSheet.create({
   quickAddBtn: {
     marginTop: 14,
     backgroundColor: colors.primary,
-    paddingHorizontal: 20,
-    height: 46,
-    borderRadius: 14,
+    paddingHorizontal: 24,
+    height: 52,
+    borderRadius: 9999,
     justifyContent: 'center',
     alignItems: 'center',
     ...shadows.soft,
   },
   quickAddBtnText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.4,
   },
