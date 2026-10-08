@@ -331,18 +331,18 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
     setIsSavingEdit(true);
     try {
       await memberService.updateMember(memberId, {
-        title: editTitle || undefined,
+        title: editTitle ? editTitle.trim() : '',
         name: editName.trim(),
-        photo_uri: editPhotoUri || undefined,
-        age: editAge ? parseInt(editAge, 10) : undefined,
+        photo_uri: editPhotoUri || '',
+        age: editAge ? parseInt(editAge, 10) : (null as any),
         gender: editGender,
-        dob: editDob.trim() || undefined,
-        phone: editPhone.trim() || undefined,
-        email: editEmail.trim() || undefined,
-        address: editAddress.trim() || undefined,
-        emergency_contact: editEmergencyContact.trim() || undefined,
-        injuries: editInjuries.trim() || undefined,
-        fitness_goals: editFitnessGoals.trim() || undefined,
+        dob: editDob.trim(),
+        phone: editPhone.trim(),
+        email: editEmail.trim(),
+        address: editAddress.trim(),
+        emergency_contact: editEmergencyContact.trim(),
+        injuries: editInjuries.trim(),
+        fitness_goals: editFitnessGoals.trim(),
         status: editStatus,
       });
 
@@ -1108,7 +1108,7 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
 
                   <View style={styles.flatRow}>
                     <Text style={styles.flatLabel}>Fitness Goals</Text>
-                    <Text style={styles.flatValue}>{member.fitness_goals || 'General Fitness'}</Text>
+                    <Text style={styles.flatValue}>{member.fitness_goals || 'Not specified'}</Text>
                   </View>
 
                   <View style={styles.flatRow}>

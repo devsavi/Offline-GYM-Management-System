@@ -121,7 +121,8 @@ export const memberService = {
     for (const key of allowedKeys) {
       if (data[key] !== undefined) {
         fields.push(`${key} = ?`);
-        params.push(data[key] as any);
+        const val = data[key];
+        params.push(val === '' || val === null ? null : (val as any));
       }
     }
 

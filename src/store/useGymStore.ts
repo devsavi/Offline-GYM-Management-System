@@ -28,6 +28,7 @@ interface GymState {
   // Members (Scoped to selectedLocation)
   members: Member[];
   isLoadingMembers: boolean;
+  isSearching: boolean;
   searchQuery: string;
   statusFilter: 'all' | 'active' | 'inactive';
   locationStats: MemberSummaryStats | null;
@@ -80,6 +81,7 @@ export const useGymStore = create<GymState>((set, get) => ({
 
   members: [],
   isLoadingMembers: false,
+  isSearching: false,
   searchQuery: '',
   statusFilter: 'all',
   locationStats: null,
@@ -153,6 +155,7 @@ export const useGymStore = create<GymState>((set, get) => ({
       locationStats: null,
       searchQuery: '',
       statusFilter: 'all',
+      isSearching: false,
       isAuthenticated: false,
       errorMessage: null,
     });
@@ -198,6 +201,7 @@ export const useGymStore = create<GymState>((set, get) => ({
       selectedLocation: location,
       searchQuery: '',
       statusFilter: 'all',
+      isSearching: false,
     });
     await get().refreshDashboard();
   },
@@ -267,8 +271,13 @@ export const useGymStore = create<GymState>((set, get) => ({
   },
 
   setSearchQuery: (query: string) => {
-    set({ searchQuery: query });
-    get().loadMembers();
+    set({ searchQuery: query, isSearching: true });
+    const { selectedLocation, statusFilter } = get();
+    if (!selectedLocation) { set({ isSearching: false }); return; }
+    memberService
+      .getMembersByLocation(selectedLocation.id, query, statusFilter)
+      .then((members) => set({ members, isSearching: false }))
+      .catch(() => set({ isSearching: false }));
   },
 
   setStatusFilter: (filter: 'all' | 'active' | 'inactive') => {
@@ -281,11 +290,12 @@ export const useGymStore = create<GymState>((set, get) => ({
     if (!selectedLocation) return;
 
     try {
-      const [members, stats] = await Promise.all([
+      const [members, stats, locations] = await Promise.all([
         memberService.getMembersByLocation(selectedLocation.id, get().searchQuery, get().statusFilter),
         memberService.getLocationSummaryStats(selectedLocation.id),
+        locationService.getAllLocations(),
       ]);
-      set({ members, locationStats: stats });
+      set({ members, locationStats: stats, locations });
     } catch (err: any) {
       console.error('[GymStore] Error refreshing dashboard:', err);
     }

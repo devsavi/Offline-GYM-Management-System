@@ -61,9 +61,12 @@ export const MembersTab: React.FC<MembersTabProps> = ({
     const isPaid = item.latest_payment_status === 'paid';
     const isPending = item.latest_payment_status === 'pending';
     const isUnpaid = item.latest_payment_status === 'unpaid';
+    const statusText = isPaid ? 'Fees Paid' : isPending ? 'Due Soon' : isUnpaid ? 'Fee Unpaid' : 'No Plan';
+    const statusColor = isPaid ? colors.success : isPending ? '#D97706' : isUnpaid ? '#EF4444' : colors.textMuted;
     const itemDisplayName = item.title && !item.name.toLowerCase().startsWith(item.title.toLowerCase())
       ? `${item.title} ${item.name}`
       : item.name;
+    const contactText = [item.phone, item.email].filter(Boolean).join(' • ') || 'No contact provided';
 
     return (
       <TouchableOpacity
@@ -83,70 +86,19 @@ export const MembersTab: React.FC<MembersTabProps> = ({
 
         <View style={{ flex: 1, marginLeft: 12 }}>
           <View style={styles.memberNameRow}>
-            <Text style={styles.memberName}>{itemDisplayName}</Text>
-            <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: item.status === 'active' ? colors.mintSoft : '#F1F5F9' },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusBadgeText,
-                  { color: item.status === 'active' ? colors.primary : colors.textMuted },
-                ]}
-              >
-                {item.status.toUpperCase()}
-              </Text>
-            </View>
+            <Text style={styles.memberName} numberOfLines={1}>
+              {itemDisplayName}
+            </Text>
           </View>
 
-          <Text style={styles.memberSubtitle}>
-            {item.phone || item.email || 'No contact provided'}
+          <Text style={styles.memberAddressText} numberOfLines={1}>
+            {contactText}
           </Text>
 
-          <View style={styles.memberTagsRow}>
-            {/* Payment badge */}
-            <View
-              style={[
-                styles.paymentPill,
-                {
-                  backgroundColor: isPaid
-                    ? colors.successSoft
-                    : isPending
-                    ? colors.warningSoft
-                    : isUnpaid
-                    ? colors.dangerSoft
-                    : '#F1F5F9',
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.paymentPillText,
-                  {
-                    color: isPaid
-                      ? colors.success
-                      : isPending
-                      ? colors.warning
-                      : isUnpaid
-                      ? colors.danger
-                      : colors.textMuted,
-                  },
-                ]}
-              >
-                {isPaid ? 'Fees Paid' : isPending ? 'Due Soon' : isUnpaid ? 'Fee Unpaid' : 'No Plan'}
-              </Text>
-            </View>
-
-            {item.fitness_goals ? (
-              <View style={styles.goalPill}>
-                <Text style={styles.goalPillText} numberOfLines={1}>
-                  🎯 {item.fitness_goals}
-                </Text>
-              </View>
-            ) : null}
-          </View>
+          <Text style={styles.memberMetaText} numberOfLines={1}>
+            <Text style={{ color: statusColor, fontWeight: '600' }}>{statusText}</Text>
+            {item.fitness_goals ? ` • 🎯 ${item.fitness_goals}` : ''}
+          </Text>
         </View>
 
         {/* Quick Check-in Button */}
@@ -225,8 +177,8 @@ export const MembersTab: React.FC<MembersTabProps> = ({
         ))}
       </View>
 
-      {/* Member List */}
-      {isLoadingMembers ? (
+      {/* Member List — always rendered to avoid blink on search */}
+      {isLoadingMembers && members.length === 0 ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -236,6 +188,7 @@ export const MembersTab: React.FC<MembersTabProps> = ({
           keyExtractor={(item) => item.id}
           renderItem={renderMemberItem}
           contentContainerStyle={styles.listContent}
+          removeClippedSubviews={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -363,18 +316,41 @@ const styles = StyleSheet.create({
   memberCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: rounded.lg,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    ...shadows.card,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 76,
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  memberNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 22,
+    gap: 8,
+  },
+  memberName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  memberAddressText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 3,
+  },
+  memberMetaText: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 3,
   },
   avatarBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: colors.mintSoft,
     justifyContent: 'center',
     alignItems: 'center',
@@ -383,67 +359,12 @@ const styles = StyleSheet.create({
   avatarImg: {
     width: '100%',
     height: '100%',
-    borderRadius: 26,
+    borderRadius: 24,
   },
   avatarText: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     color: colors.primary,
-  },
-  memberNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginRight: 4,
-    marginBottom: 2,
-  },
-  memberName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    flex: 1,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  memberSubtitle: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginBottom: 6,
-  },
-  memberTagsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-    gap: 6,
-    flexWrap: 'wrap',
-  },
-  paymentPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  paymentPillText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  goalPill: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    maxWidth: 140,
-  },
-  goalPillText: {
-    fontSize: 10,
-    color: colors.textSecondary,
   },
   checkInButton: {
     flexDirection: 'row',

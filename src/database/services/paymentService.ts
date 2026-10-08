@@ -307,19 +307,23 @@ export const paymentService = {
   },
 
   /**
-   * Delete a payment record. If it has linked covered records, deletes them as well.
+   * Delete a payment record. If it has linked covered (family) records, deletes them as well.
    */
   async deletePayment(paymentId: string): Promise<void> {
     const pay = await queryFirst<any>(`SELECT * FROM payments WHERE id = ?;`, [paymentId]);
-    if (pay && pay.payer_member_id === pay.member_id && pay.start_date && pay.end_date) {
-      // Delete primary and linked records
+    if (!pay) return;
+
+    // Always delete the specific payment record by its exact ID
+    await runQuery(`DELETE FROM payments WHERE id = ?;`, [paymentId]);
+
+    // If this was a primary/payer record, also cascade-delete only the
+    // family-member "covered" records linked to it (member_id != payer_member_id)
+    if (pay.payer_member_id === pay.member_id && pay.start_date && pay.end_date) {
       await runQuery(
         `DELETE FROM payments
-         WHERE payer_member_id = ? AND start_date = ? AND end_date = ?;`,
+         WHERE payer_member_id = ? AND start_date = ? AND end_date = ? AND member_id != payer_member_id;`,
         [pay.member_id, pay.start_date, pay.end_date]
       );
-    } else {
-      await runQuery(`DELETE FROM payments WHERE id = ?;`, [paymentId]);
     }
   },
 };
