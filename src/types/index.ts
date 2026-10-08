@@ -4,6 +4,7 @@ export type ExerciseCategory =
   | 'Cardio'
   | 'Biceps'
   | 'Triceps'
+  | 'Upper Arms'
   | 'Quadriceps'
   | 'Shoulders'
   | 'Hamstrings'

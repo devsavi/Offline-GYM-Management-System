@@ -7,12 +7,15 @@ import {
   StyleSheet,
   Alert,
   RefreshControl,
+  ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useGymStore } from '../../store/useGymStore';
 import { colors, rounded, shadows } from '../../theme/colors';
 import { Member } from '../../types';
 import { checkInService } from '../../database/services/checkInService';
+
+const QUICK_ACTION_BG = require('../../../public/quick_action.webp');
 
 interface HomeTabProps {
   onNavigateTab: (tab: 'Members' | 'Exercises' | 'Library') => void;
@@ -78,21 +81,21 @@ export const HomeTab: React.FC<HomeTabProps> = ({
         </View>
 
         <View style={styles.statCard}>
-          <View style={[styles.statIconBadge, { backgroundColor: colors.mintSoft }]}>
-            <Ionicons name="checkmark-done" size={18} color={colors.mint} />
+          <View style={styles.statIconBadge}>
+            <Ionicons name="checkmark-done" size={18} color={colors.primary} />
           </View>
           <Text style={styles.statLabel}>Checked In Today</Text>
-          <Text style={[styles.statValue, { color: colors.mint }]}>
+          <Text style={styles.statValue}>
             {locationStats?.checkedInToday ?? 0}
           </Text>
         </View>
 
         <View style={styles.statCard}>
-          <View style={[styles.statIconBadge, { backgroundColor: '#FEE2E2' }]}>
-            <Ionicons name="alert-circle" size={18} color="#EF4444" />
+          <View style={styles.statIconBadge}>
+            <Ionicons name="alert-circle" size={18} color={colors.primary} />
           </View>
           <Text style={styles.statLabel}>Pending Dues</Text>
-          <Text style={[styles.statValue, { color: '#EF4444' }]}>
+          <Text style={styles.statValue}>
             {locationStats?.pendingPaymentsCount ?? 0}
           </Text>
         </View>
@@ -105,53 +108,97 @@ export const HomeTab: React.FC<HomeTabProps> = ({
 
       <View style={styles.actionsRow}>
         <TouchableOpacity
-          style={[styles.actionCard, { backgroundColor: '#F0FDF4' }]}
+          style={styles.actionCard}
           onPress={onAddMember}
           activeOpacity={0.8}
         >
-          <View style={[styles.actionIconBox, { backgroundColor: colors.primary }]}>
-            <Ionicons name="person-add" size={20} color="#FFFFFF" />
-          </View>
-          <Text style={styles.actionTitle}>Add Member</Text>
-          <Text style={styles.actionDesc}>Register new client</Text>
+          <ImageBackground
+            source={QUICK_ACTION_BG}
+            style={styles.actionCardBg}
+            imageStyle={styles.actionCardImage}
+            resizeMode="cover"
+          >
+            <View style={styles.actionOverlay}>
+              <View style={styles.actionIconBox}>
+                <Ionicons name="person-add" size={18} color="#FFFFFF" />
+              </View>
+              <View style={styles.actionTextBox}>
+                <Text style={styles.actionTitle} numberOfLines={1}>Add Member</Text>
+                <Text style={styles.actionDesc} numberOfLines={1}>Register new client</Text>
+              </View>
+            </View>
+          </ImageBackground>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.actionCard, { backgroundColor: '#EFF6FF' }]}
+          style={styles.actionCard}
           onPress={() => onNavigateTab('Members')}
           activeOpacity={0.8}
         >
-          <View style={[styles.actionIconBox, { backgroundColor: '#2563EB' }]}>
-            <Ionicons name="list" size={20} color="#FFFFFF" />
-          </View>
-          <Text style={styles.actionTitle}>View Members</Text>
-          <Text style={styles.actionDesc}>Check directory</Text>
+          <ImageBackground
+            source={QUICK_ACTION_BG}
+            style={styles.actionCardBg}
+            imageStyle={styles.actionCardImage}
+            resizeMode="cover"
+          >
+            <View style={styles.actionOverlay}>
+              <View style={styles.actionIconBox}>
+                <Ionicons name="list" size={18} color="#FFFFFF" />
+              </View>
+              <View style={styles.actionTextBox}>
+                <Text style={styles.actionTitle} numberOfLines={1}>View Members</Text>
+                <Text style={styles.actionDesc} numberOfLines={1}>Check directory</Text>
+              </View>
+            </View>
+          </ImageBackground>
         </TouchableOpacity>
       </View>
 
       <View style={[styles.actionsRow, { marginTop: 10 }]}>
         <TouchableOpacity
-          style={[styles.actionCard, { backgroundColor: '#FAF5FF' }]}
+          style={styles.actionCard}
           onPress={() => onNavigateTab('Exercises')}
           activeOpacity={0.8}
         >
-          <View style={[styles.actionIconBox, { backgroundColor: '#9333EA' }]}>
-            <Ionicons name="barbell" size={20} color="#FFFFFF" />
-          </View>
-          <Text style={styles.actionTitle}>Exercises</Text>
-          <Text style={styles.actionDesc}>Movement library</Text>
+          <ImageBackground
+            source={QUICK_ACTION_BG}
+            style={styles.actionCardBg}
+            imageStyle={styles.actionCardImage}
+            resizeMode="cover"
+          >
+            <View style={styles.actionOverlay}>
+              <View style={styles.actionIconBox}>
+                <Ionicons name="barbell" size={18} color="#FFFFFF" />
+              </View>
+              <View style={styles.actionTextBox}>
+                <Text style={styles.actionTitle} numberOfLines={1}>Exercises</Text>
+                <Text style={styles.actionDesc} numberOfLines={1}>Movement library</Text>
+              </View>
+            </View>
+          </ImageBackground>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.actionCard, { backgroundColor: '#FFFBEB' }]}
+          style={styles.actionCard}
           onPress={() => onNavigateTab('Library')}
           activeOpacity={0.8}
         >
-          <View style={[styles.actionIconBox, { backgroundColor: '#D97706' }]}>
-            <Ionicons name="library" size={20} color="#FFFFFF" />
-          </View>
-          <Text style={styles.actionTitle}>Library Tools</Text>
-          <Text style={styles.actionDesc}>Plans & metrics</Text>
+          <ImageBackground
+            source={QUICK_ACTION_BG}
+            style={styles.actionCardBg}
+            imageStyle={styles.actionCardImage}
+            resizeMode="cover"
+          >
+            <View style={styles.actionOverlay}>
+              <View style={styles.actionIconBox}>
+                <Ionicons name="library" size={18} color="#FFFFFF" />
+              </View>
+              <View style={styles.actionTextBox}>
+                <Text style={styles.actionTitle} numberOfLines={1}>Library Tools</Text>
+                <Text style={styles.actionDesc} numberOfLines={1}>Plans & metrics</Text>
+              </View>
+            </View>
+          </ImageBackground>
         </TouchableOpacity>
       </View>
 
@@ -241,26 +288,26 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    ...shadows.soft,
   },
   statIconBadge: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F1F5F9',
+    backgroundColor: colors.mintSoft,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
   },
   statLabel: {
     fontSize: 10,
-    color: colors.textSecondary,
-    fontWeight: '600',
+    color: colors.primary,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   statValue: {
     fontSize: 20,
     fontWeight: '800',
-    color: colors.textPrimary,
+    color: colors.primary,
     marginTop: 4,
   },
   sectionHeader: {
@@ -286,27 +333,49 @@ const styles = StyleSheet.create({
   actionCard: {
     flex: 1,
     borderRadius: rounded.lg,
-    padding: 14,
+    overflow: 'hidden',
+    backgroundColor: colors.primary,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    ...shadows.soft,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  actionCardBg: {
+    width: '100%',
+    flex: 1,
+  },
+  actionCardImage: {
+    borderRadius: rounded.lg,
+  },
+  actionOverlay: {
+    flex: 1,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(6, 35, 22, 0.70)',
   },
   actionIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 9999,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
+  },
+  actionTextBox: {
+    flex: 1,
+    justifyContent: 'center',
   },
   actionTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: colors.textPrimary,
+    color: '#FFFFFF',
   },
   actionDesc: {
-    fontSize: 11,
-    color: colors.textSecondary,
+    fontSize: 10.5,
+    color: '#FFFFFF',
+    opacity: 0.85,
     marginTop: 2,
   },
   recentMemberCard: {
@@ -318,7 +387,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    ...shadows.soft,
   },
   recentAvatar: {
     width: 40,

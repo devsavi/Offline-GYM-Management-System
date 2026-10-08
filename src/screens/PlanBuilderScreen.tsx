@@ -22,6 +22,7 @@ import { addWorkoutPlanToCalendar } from '../utils/calendar';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { Exercise, ExerciseCategory, Member, PlanExerciseItem } from '../types';
+import { CategoryIcon } from '../components/CategoryIcon';
 
 const TOP_BAR_BG = require('../../public/top_bar.webp');
 const PLACEHOLDER_COLOR = '#8B9E93';
@@ -32,19 +33,20 @@ type DurationOption = (typeof DURATION_OPTIONS)[number];
 type Props = NativeStackScreenProps<RootStackParamList, 'PlanBuilder'>;
 
 const CATEGORIES: ExerciseCategory[] = [
-  'Chest',
-  'Back',
   'Cardio',
+  'Chest',
   'Biceps',
   'Triceps',
-  'Quadriceps',
-  'Shoulders',
-  'Hamstrings',
-  'Hips',
-  'Waist',
-  'Calves',
-  'Neck',
+  'Upper Arms',
   'Forearms',
+  'Shoulders',
+  'Neck',
+  'Back',
+  'Waist',
+  'Hips',
+  'Quadriceps',
+  'Hamstrings',
+  'Calves',
 ];
 
 export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
@@ -456,7 +458,7 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
             horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.modalCatScroll}
-            contentContainerStyle={{ paddingHorizontal: 16 }}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 4 }}
           >
             {CATEGORIES.map((cat) => (
               <TouchableOpacity
@@ -468,6 +470,18 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
                 onPress={() => setActiveCategory(cat)}
                 activeOpacity={0.8}
               >
+                <View
+                  style={[
+                    styles.modalCatIconWrap,
+                    activeCategory === cat && styles.modalCatIconWrapActive,
+                  ]}
+                >
+                  <CategoryIcon
+                    category={cat}
+                    size={42}
+                    isSelected={activeCategory === cat}
+                  />
+                </View>
                 <Text
                   style={[
                     styles.modalCatChipText,
@@ -814,19 +828,37 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F1F5F9',
   },
   modalCatChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: rounded.full,
-    backgroundColor: '#EEF3F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    minWidth: 86,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
     marginRight: 8,
   },
   modalCatChipActive: {
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  modalCatIconWrap: {
+    width: 52,
+    height: 52,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 7,
+    backgroundColor: 'transparent',
+  },
+  modalCatIconWrapActive: {
+    backgroundColor: 'transparent',
   },
   modalCatChipText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: colors.textSecondary,
+    textAlign: 'center',
   },
   modalCatChipTextActive: {
     color: '#FFFFFF',

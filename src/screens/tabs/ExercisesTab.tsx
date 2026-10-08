@@ -5,6 +5,7 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
+  ScrollView,
   StyleSheet,
   ActivityIndicator,
   Modal,
@@ -14,19 +15,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { workoutService } from '../../database/services/workoutService';
 import { Exercise, ExerciseCategory } from '../../types';
 import { colors, rounded, shadows } from '../../theme/colors';
+import { CategoryIcon } from '../../components/CategoryIcon';
 
 const CATEGORIES: ('All' | ExerciseCategory)[] = [
   'All',
-  'Chest',
-  'Back',
   'Cardio',
+  'Chest',
   'Biceps',
   'Triceps',
-  'Quadriceps',
+  'Upper Arms',
+  'Forearms',
   'Shoulders',
+  'Neck',
+  'Back',
+  'Waist',
+  'Hips',
+  'Quadriceps',
   'Hamstrings',
   'Calves',
-  'Waist',
 ];
 
 export const ExercisesTab: React.FC = () => {
@@ -64,6 +70,13 @@ export const ExercisesTab: React.FC = () => {
     (ex.description && ex.description.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  const handleOpenAddExercise = () => {
+    setCustomName('');
+    setCustomDescription('');
+    setCustomCategory('Chest');
+    setModalVisible(true);
+  };
+
   const handleAddCustomExercise = async () => {
     if (!customName.trim()) {
       Alert.alert('Required', 'Please enter exercise name.');
@@ -80,7 +93,7 @@ export const ExercisesTab: React.FC = () => {
       setCustomName('');
       setCustomDescription('');
       setModalVisible(false);
-      Alert.alert('Success', 'Custom exercise added to dictionary!');
+      Alert.alert('Success', 'New exercise registered.');
       loadExercises();
     } catch (e: any) {
       Alert.alert('Error', e.message || 'Failed to add custom exercise');
@@ -91,7 +104,7 @@ export const ExercisesTab: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      {/* Title & Add Custom Button */}
+      {/* Title & Add Exercise Button */}
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.title}>Exercise Library</Text>
@@ -102,11 +115,11 @@ export const ExercisesTab: React.FC = () => {
 
         <TouchableOpacity
           style={styles.addCustomBtn}
-          onPress={() => setModalVisible(true)}
+          onPress={handleOpenAddExercise}
           activeOpacity={0.8}
         >
           <Ionicons name="add" size={18} color="#FFFFFF" />
-          <Text style={styles.addCustomBtnText}>Add Custom</Text>
+          <Text style={styles.addCustomBtnText}>Add Exercise</Text>
         </TouchableOpacity>
       </View>
 
@@ -134,22 +147,36 @@ export const ExercisesTab: React.FC = () => {
           showsHorizontalScrollIndicator={false}
           data={CATEGORIES}
           keyExtractor={(item) => item}
-          contentContainerStyle={{ paddingHorizontal: 16 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 4 }}
           renderItem={({ item }) => {
             const isSelected = selectedCategory === item;
             return (
               <TouchableOpacity
                 style={[
-                  styles.categoryPill,
-                  isSelected && styles.categoryPillActive,
+                  styles.categoryCard,
+                  isSelected && styles.categoryCardActive,
                 ]}
                 onPress={() => setSelectedCategory(item)}
+                activeOpacity={0.8}
               >
+                <View
+                  style={[
+                    styles.categoryIconWrap,
+                    isSelected && styles.categoryIconWrapActive,
+                  ]}
+                >
+                  <CategoryIcon
+                    category={item}
+                    size={42}
+                    isSelected={isSelected}
+                  />
+                </View>
                 <Text
                   style={[
-                    styles.categoryPillText,
-                    isSelected && styles.categoryPillTextActive,
+                    styles.categoryCardText,
+                    isSelected && styles.categoryCardTextActive,
                   ]}
+                  numberOfLines={1}
                 >
                   {item}
                 </Text>
@@ -172,7 +199,7 @@ export const ExercisesTab: React.FC = () => {
           renderItem={({ item }) => (
             <View style={styles.exerciseCard}>
               <View style={styles.exerciseIconCircle}>
-                <Ionicons name="barbell-outline" size={22} color={colors.primary} />
+                <CategoryIcon category={item.category} size={28} />
               </View>
 
               <View style={{ flex: 1, marginLeft: 12 }}>
@@ -207,82 +234,111 @@ export const ExercisesTab: React.FC = () => {
         />
       )}
 
-      {/* Add Custom Exercise Modal */}
+      {/* ── MODAL: Create New Exercise (Same UI as New Gym Branch in Profile) ── */}
       <Modal
         visible={modalVisible}
         transparent
         animationType="slide"
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Custom Exercise</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={styles.formLabel}>Exercise Name *</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholder="e.g. Incline Cable Flyes"
-              placeholderTextColor="#8B9E93"
-              value={customName}
-              onChangeText={setCustomName}
-            />
-
-            <Text style={styles.formLabel}>Target Muscle Category</Text>
-            <View style={styles.modalCategoryRow}>
-              {CATEGORIES.filter((c) => c !== 'All').map((cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  style={[
-                    styles.modalCatChip,
-                    customCategory === cat && styles.modalCatChipActive,
-                  ]}
-                  onPress={() => setCustomCategory(cat as ExerciseCategory)}
-                >
-                  <Text
-                    style={[
-                      styles.modalCatChipText,
-                      customCategory === cat && styles.modalCatChipTextActive,
-                    ]}
-                  >
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.formLabel}>Description / Form Cues</Text>
-            <TextInput
-              style={[styles.modalInput, { height: 60 }]}
-              placeholder="e.g. Set bench to 30 degrees, maintain slight elbow bend..."
-              placeholderTextColor="#8B9E93"
-              multiline
-              value={customDescription}
-              onChangeText={setCustomDescription}
-            />
-
-            <View style={styles.modalActions}>
+        <View style={styles.sheetModalBackdrop}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFillObject}
+            activeOpacity={1}
+            onPress={() => setModalVisible(false)}
+          />
+          <View style={styles.sheetModalBox}>
+            <View style={styles.sheetModalHeader}>
+              <Text style={styles.sheetModalTitle}>New Exercise</Text>
               <TouchableOpacity
-                style={styles.modalCancelBtn}
                 onPress={() => setModalVisible(false)}
+                activeOpacity={0.8}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Ionicons name="close" size={22} color={colors.textPrimary} />
               </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={styles.inputLabel}>Exercise Name *</Text>
+              <View style={styles.inputWrap}>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g. Incline Cable Flyes"
+                  placeholderTextColor={colors.textMuted}
+                  value={customName}
+                  onChangeText={setCustomName}
+                />
+              </View>
+
+              <Text style={styles.inputLabel}>Target Muscle Category *</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.modalCategoryScroll}
+                contentContainerStyle={styles.modalCategoryScrollContent}
+              >
+                {CATEGORIES.filter((c) => c !== 'All').map((cat) => {
+                  const isSelected = customCategory === cat;
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[
+                        styles.categoryCard,
+                        isSelected && styles.categoryCardActive,
+                      ]}
+                      onPress={() => setCustomCategory(cat as ExerciseCategory)}
+                      activeOpacity={0.8}
+                    >
+                      <View
+                        style={[
+                          styles.categoryIconWrap,
+                          isSelected && styles.categoryIconWrapActive,
+                        ]}
+                      >
+                        <CategoryIcon
+                          category={cat}
+                          size={42}
+                          isSelected={isSelected}
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          styles.categoryCardText,
+                          isSelected && styles.categoryCardTextActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              <Text style={styles.inputLabel}>Description / Form Cues (Optional)</Text>
+              <View style={[styles.inputWrap, styles.textAreaWrap]}>
+                <TextInput
+                  style={[styles.textInput, styles.textAreaInput]}
+                  placeholder="e.g. Set bench to 30 degrees, maintain slight elbow bend..."
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  numberOfLines={3}
+                  value={customDescription}
+                  onChangeText={setCustomDescription}
+                />
+              </View>
 
               <TouchableOpacity
-                style={styles.modalSaveBtn}
+                style={styles.sheetSaveActionBtn}
                 onPress={handleAddCustomExercise}
+                activeOpacity={0.85}
                 disabled={isSubmitting}
               >
-                <Text style={styles.modalSaveText}>
-                  {isSubmitting ? 'Saving...' : 'Save Movement'}
+                <Text style={styles.sheetSaveActionBtnText}>
+                  {isSubmitting ? 'ADDING EXERCISE...' : 'ADD EXERCISE'}
                 </Text>
               </TouchableOpacity>
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -345,7 +401,44 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   categoryContainer: {
-    marginVertical: 6,
+    marginVertical: 8,
+  },
+  categoryCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    minWidth: 86,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    marginRight: 10,
+  },
+  categoryCardActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  categoryIconWrap: {
+    width: 52,
+    height: 52,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 7,
+    backgroundColor: 'transparent',
+  },
+  categoryIconWrapActive: {
+    backgroundColor: 'transparent',
+  },
+  categoryCardText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    textAlign: 'center',
+  },
+  categoryCardTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
   categoryPill: {
     paddingHorizontal: 14,
@@ -383,13 +476,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    ...shadows.soft,
   },
   exerciseIconCircle: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.mintSoft,
+    backgroundColor: 'transparent',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -455,110 +547,86 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     marginTop: 4,
   },
-  modalBackdrop: {
+  // ── BOTTOM SHEET MODAL STYLES (Matching Add New Gym Branch UI) ──
+  sheetModalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
   },
-  modalCard: {
-    width: '100%',
-    maxHeight: '85%',
+  sheetModalBox: {
     backgroundColor: '#FFFFFF',
-    borderRadius: rounded.xl,
-    padding: 20,
-    ...shadows.floating,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    maxHeight: '88%',
   },
-  modalHeader: {
+  sheetModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
   },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: '700',
+  sheetModalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
     color: colors.textPrimary,
   },
-  formLabel: {
-    fontSize: 12,
+  inputLabel: {
+    fontSize: 13,
     fontWeight: '600',
-    color: colors.textSecondary,
+    color: '#475569',
+    marginBottom: 6,
+    marginTop: 10,
+  },
+  inputWrap: {
+    backgroundColor: '#EEF3F0',
+    borderRadius: 9999,
+    paddingHorizontal: 20,
+    height: 52,
+    justifyContent: 'center',
     marginBottom: 4,
-    marginTop: 8,
   },
-  modalInput: {
-    backgroundColor: '#EEF3F0',
-    borderRadius: 9999,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+  textInput: {
     fontSize: 15,
     color: colors.textPrimary,
-    marginBottom: 8,
   },
-  modalCategoryRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 8,
+  textAreaWrap: {
+    borderRadius: 16,
+    height: 80,
+    paddingVertical: 12,
+    justifyContent: 'flex-start',
   },
-  modalCatChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: rounded.full,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    backgroundColor: '#F8FAFC',
+  textAreaInput: {
+    flex: 1,
+    textAlignVertical: 'top',
   },
-  modalCatChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+  modalCategoryScroll: {
+    marginBottom: 6,
+    marginTop: 2,
   },
-  modalCatChipText: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    fontWeight: '600',
+  modalCategoryScrollContent: {
+    paddingVertical: 4,
+    paddingRight: 10,
   },
-  modalCatChipTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-    marginTop: 16,
-  },
-  modalCancelBtn: {
-    paddingHorizontal: 20,
+  sheetSaveActionBtn: {
     height: 52,
+    backgroundColor: colors.primary,
     borderRadius: 9999,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#EEF3F0',
+    marginTop: 22,
+    marginBottom: 10,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.24,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  modalCancelText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textSecondary,
-  },
-  modalSaveBtn: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 28,
-    height: 52,
-    borderRadius: 9999,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...shadows.soft,
-  },
-  modalSaveText: {
-    fontSize: 15,
-    fontWeight: '700',
+  sheetSaveActionBtnText: {
     color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
     letterSpacing: 0.4,
   },
 });
