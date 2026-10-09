@@ -23,7 +23,7 @@ export const workoutService = {
         r.image_uri ||
         (r.id === 'ex_ch_1' ||
         (r.name?.toLowerCase().includes('bench press') && r.category?.toLowerCase() === 'chest')
-          ? '/exercises/chest/bench_press.webp'
+          ? '/exercises/chest/barbell_bench_press.webp'
           : undefined),
     }));
   },
@@ -129,7 +129,7 @@ export const workoutService = {
         r.image_uri ||
         (r.exercise_id === 'ex_ch_1' ||
         (r.exercise_name?.toLowerCase().includes('bench press') && r.category?.toLowerCase() === 'chest')
-          ? '/exercises/chest/bench_press.webp'
+          ? '/exercises/chest/barbell_bench_press.webp'
           : undefined),
     }));
   },

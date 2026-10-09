@@ -28,7 +28,51 @@ const isSvgUri = (uri: string): boolean =>
  * and work correctly on both web and native without any path-resolution issues.
  */
 const BUNDLED_IMAGES: Record<string, any> = {
-  '/exercises/chest/bench_press.webp': require('../../public/exercises/chest/bench_press.webp'),
+  '/exercises/chest/barbell_bench_press.webp': require('../../public/exercises/chest/barbell_bench_press.webp'),
+  '/exercises/chest/kneeling_push_up.webp': require('../../public/exercises/chest/kneeling_push_up.webp'),
+  '/exercises/chest/shoulder_tap.webp': require('../../public/exercises/chest/shoulder_tap.webp'),
+  '/exercises/chest/dumbbell_svend_press.webp': require('../../public/exercises/chest/dumbbell_svend_press.webp'),
+  '/exercises/chest/pseudo_planche_push_up.webp': require('../../public/exercises/chest/pseudo_planche_push_up.webp'),
+  '/exercises/chest/archer_push_up.webp': require('../../public/exercises/chest/archer_push_up.webp'),
+  '/exercises/chest/dumbbell_squeeze_press_on_floor.webp': require('../../public/exercises/chest/dumbbell_squeeze_press_on_floor.webp'),
+  '/exercises/chest/single_arm_push_up.webp': require('../../public/exercises/chest/single_arm_push_up.webp'),
+  '/exercises/chest/above_head_chest_stretch.webp': require('../../public/exercises/chest/above_head_chest_stretch.webp'),
+  '/exercises/chest/hands_release_push_up.webp': require('../../public/exercises/chest/hands_release_push_up.webp'),
+  '/exercises/chest/arm_crossover.webp': require('../../public/exercises/chest/arm_crossover.webp'),
+  '/exercises/chest/cable_lying_fly.webp': require('../../public/exercises/chest/cable_lying_fly.webp'),
+  '/exercises/chest/cobra_push_up.webp': require('../../public/exercises/chest/cobra_push_up.webp'),
+  '/exercises/chest/doorway_chest_stretch.webp': require('../../public/exercises/chest/doorway_chest_stretch.webp'),
+  '/exercises/chest/dynamic_chest_stretch.webp': require('../../public/exercises/chest/dynamic_chest_stretch.webp'),
+  '/exercises/chest/kneeling_rotational_push_up.webp': require('../../public/exercises/chest/kneeling_rotational_push_up.webp'),
+  '/exercises/chest/smith_decline_bench_press.webp': require('../../public/exercises/chest/smith_decline_bench_press.webp'),
+  '/exercises/chest/standing_fly.webp': require('../../public/exercises/chest/standing_fly.webp'),
+  '/exercises/chest/coner_wall_chest_stretch.webp': require('../../public/exercises/chest/coner_wall_chest_stretch.webp'),
+  '/exercises/chest/barbell_incline_close_grip_bench_press.webp': require('../../public/exercises/chest/barbell_incline_close_grip_bench_press.webp'),
+  '/exercises/chest/decline_pullover.webp': require('../../public/exercises/chest/decline_pullover.webp'),
+  '/exercises/chest/power_push_away.webp': require('../../public/exercises/chest/power_push_away.webp'),
+  '/exercises/chest/chest_bench_dip.webp': require('../../public/exercises/chest/chest_bench_dip.webp'),
+  '/exercises/chest/bent_arm_chest_stretch.webp': require('../../public/exercises/chest/bent_arm_chest_stretch.webp'),
+  '/exercises/chest/cable_decline_fly.webp': require('../../public/exercises/chest/cable_decline_fly.webp'),
+  '/exercises/cardio/double_jump_rope.webp': require('../../public/exercises/cardio/double_jump_rope.webp'),
+  '/exercises/cardio/jump_rope.webp': require('../../public/exercises/cardio/jump_rope.webp'),
+  '/exercises/cardio/skip_jump_rope.webp': require('../../public/exercises/cardio/skip_jump_rope.webp'),
+  '/exercises/cardio/mountain_climber.webp': require('../../public/exercises/cardio/mountain_climber.webp'),
+  '/exercises/cardio/walking.webp': require('../../public/exercises/cardio/walking.webp'),
+  '/exercises/cardio/walking_on_treadmill.webp': require('../../public/exercises/cardio/walking_on_treadmill.webp'),
+  '/exercises/cardio/stationary_bike_run.webp': require('../../public/exercises/cardio/stationary_bike_run.webp'),
+  '/exercises/cardio/jump_box.webp': require('../../public/exercises/cardio/jump_box.webp'),
+  '/exercises/cardio/stationary_bike_walk.webp': require('../../public/exercises/cardio/stationary_bike_walk.webp'),
+  '/exercises/cardio/jumping_jack.webp': require('../../public/exercises/cardio/jumping_jack.webp'),
+  '/exercises/cardio/riding_bicycle.webp': require('../../public/exercises/cardio/riding_bicycle.webp'),
+  '/exercises/cardio/sprint.webp': require('../../public/exercises/cardio/sprint.webp'),
+  '/exercises/cardio/quick_feet_run.webp': require('../../public/exercises/cardio/quick_feet_run.webp'),
+  '/exercises/cardio/high_knee_squat.webp': require('../../public/exercises/cardio/high_knee_squat.webp'),
+  '/exercises/cardio/butt_kicks.webp': require('../../public/exercises/cardio/butt_kicks.webp'),
+  '/exercises/cardio/high_knee_skip.webp': require('../../public/exercises/cardio/high_knee_skip.webp'),
+  '/exercises/cardio/place_jog.webp.webp': require('../../public/exercises/cardio/place_jog.webp.webp'),
+  '/exercises/cardio/run.webp': require('../../public/exercises/cardio/run.webp'),
+  '/exercises/cardio/frog_hops.webp': require('../../public/exercises/cardio/frog_hops.webp'),
+  '/exercises/cardio/battling_ropes.webp': require('../../public/exercises/cardio/battling_ropes.webp'),
 };
 
 export const ExerciseImage: React.FC<ExerciseImageProps> = ({
@@ -51,7 +95,7 @@ export const ExerciseImage: React.FC<ExerciseImageProps> = ({
     (exercise.name?.toLowerCase().includes('bench press') &&
       exercise.category?.toLowerCase() === 'chest');
 
-  const effectiveUri = rawUri || (isBenchPress ? '/exercises/chest/bench_press.webp' : undefined);
+  const effectiveUri = rawUri || (isBenchPress ? '/exercises/chest/barbell_bench_press.webp' : undefined);
 
   const containerW = width ?? size;
   const containerH = height ?? size;
