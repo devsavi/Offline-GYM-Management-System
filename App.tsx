@@ -5,6 +5,7 @@ import {
   StatusBar,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Font from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
 import { useGymStore } from './src/store/useGymStore';
@@ -24,18 +25,20 @@ export default function App() {
 
   if (!isInitialized) {
     return (
-      <View style={styles.splashContainer}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
+      <SafeAreaProvider>
+        <View style={styles.splashContainer}>
+          <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaProvider>
     );
   }
 
   return (
-    <>
+    <SafeAreaProvider>
       <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
       <AppNavigator />
-    </>
+    </SafeAreaProvider>
   );
 }
 

@@ -43,7 +43,7 @@ const FADE_EASING    = Easing.out(Easing.quad);
 
 export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab, onTabChange }) => {
   const insets = useSafeAreaInsets();
-  const bottomOffset = Platform.OS === 'ios' ? Math.max(insets.bottom, 16) : 16;
+  const bottomGap = Math.max(insets.bottom + 8, Platform.OS === 'ios' ? 24 : 16);
 
   const [rowLayout, setRowLayout] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const pillAnim = useRef(new Animated.Value(0)).current;
@@ -103,7 +103,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab, onTabChan
 
   return (
     <View
-      style={[styles.outerWrapper, { paddingBottom: bottomOffset }]}
+      style={[styles.outerWrapper, { bottom: bottomGap }]}
       pointerEvents="box-none"
     >
       <View style={styles.floatingPill}>
@@ -183,7 +183,6 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({ activeTab, onTabChan
 const styles = StyleSheet.create({
   outerWrapper: {
     position: 'absolute',
-    bottom: 0,
     left: 0,
     right: 0,
     alignItems: 'center',

@@ -4,19 +4,21 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   Animated,
+  useWindowDimensions,
   Dimensions,
   Image,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useGymStore } from '../store/useGymStore';
 import { colors } from '../theme/colors';
 
 const BG_IMAGE = require('../../public/home_bg.webp');
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+// Use 'screen' (not 'window') to get full physical dimensions including status bar
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('screen');
 
 interface AuthLockScreenProps {
   onUnlocked?: () => void;
@@ -24,6 +26,9 @@ interface AuthLockScreenProps {
 
 export const AuthLockScreen: React.FC<AuthLockScreenProps> = ({ onUnlocked }) => {
   const { trainer, authenticate } = useGymStore();
+  const { width: screenWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const bottomPad = Math.max(insets.bottom + 16, 52);
   const [pin, setPin] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [hasBiometrics, setHasBiometrics] = useState(false);
@@ -107,18 +112,18 @@ export const AuthLockScreen: React.FC<AuthLockScreenProps> = ({ onUnlocked }) =>
       <Image source={BG_IMAGE} style={styles.heroBgImage} resizeMode="cover" />
       <View style={styles.heroOverlay} />
 
-      {/* ── SAME CENTER TITLE POSITION AS GET STARTED PAGE ── */}
-      <SafeAreaView style={styles.heroCenterBlock} pointerEvents="box-none">
-        <View style={styles.titleWrapper}>
+      {/* ── TITLE BLOCK — absoluteFillObject so top:'18%' = 18% of SCREEN_HEIGHT ── */}
+      <View style={styles.heroFullContent} pointerEvents="box-none">
+        <View style={styles.heroCenterBlock}>
           <Text style={styles.heroAppName}>GripState</Text>
           <Text style={styles.heroTagline}>
             The professional gym{'\n'}management platform.
           </Text>
         </View>
-      </SafeAreaView>
+      </View>
 
       {/* ── SAME BOTTOM BLOCK POSITION FOR PIN UNLOCK ── */}
-      <View style={styles.heroBottomBlock}>
+      <View style={[styles.heroBottomBlock, { paddingBottom: bottomPad }]}>
         {/* Welcome / PIN prompt greeting */}
         <Text style={styles.unlockWelcomeText}>
           {trainer?.name ? `Welcome back, ${trainer.name}` : 'Enter your 4-digit PIN to continue'}
@@ -156,7 +161,7 @@ export const AuthLockScreen: React.FC<AuthLockScreenProps> = ({ onUnlocked }) =>
         </View>
 
         {/* Keypad */}
-        <View style={styles.keypad}>
+        <View style={[styles.keypad, { width: Math.min(screenWidth * 0.62, 240) }]}>
           {[
             ['1', '2', '3'],
             ['4', '5', '6'],
@@ -225,28 +230,33 @@ const styles = StyleSheet.create({
   rootContainer: {
     flex: 1,
     backgroundColor: '#050E07',
+    minHeight: SCREEN_HEIGHT,
   },
   heroBgImage: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
   },
   heroOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
     backgroundColor: 'rgba(0,0,0,0.32)',
   },
-
-  // ── EXACT CENTER TITLE BLOCK MATCHING GET STARTED PAGE ──
-  heroCenterBlock: {
-    position: 'absolute',
-    top: '18%',
-    left: 24,
-    right: 24,
-    alignItems: 'center',
+  heroFullContent: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-start',
   },
-  titleWrapper: {
+
+  // ── TITLE BLOCK — matches OnboardingScreen heroCenterBlock exactly ──
+  heroCenterBlock: {
+    marginTop: Math.round(SCREEN_HEIGHT * 0.16),
+    paddingHorizontal: 24,
     alignItems: 'center',
-    width: '100%',
   },
   heroAppName: {
     fontSize: 48,
@@ -277,7 +287,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 24,
-    paddingBottom: 28,
     alignItems: 'center',
   },
   unlockWelcomeText: {
@@ -333,12 +342,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   keypad: {
-    width: Math.min(SCREEN_WIDTH * 0.78, 300),
     marginBottom: 8,
   },
   keypadRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    gap: 16,
     marginBottom: 10,
   },
   keypadButton: {

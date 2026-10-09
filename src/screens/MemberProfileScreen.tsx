@@ -664,7 +664,7 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       style={styles.container}
     >
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
@@ -1760,7 +1760,7 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
 
       {/* ── MODAL: Record Measurement (Height/Weight NOT required, Custom field inside, reset on save) ── */}
       <Modal visible={showMeasModal} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView behavior="padding" style={styles.modalBackdrop}>
           <View style={styles.modalBox}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>New Body Measurement</Text>
@@ -2016,12 +2016,12 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── MODAL: Assign Payment Plan ── */}
       <Modal visible={showPaymentModal} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView behavior="padding" style={styles.modalBackdrop}>
           <View style={[styles.modalBox, { maxHeight: '90%' }]}>
             <View style={styles.modalHeader}>
               <View>
@@ -2305,7 +2305,7 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </KeyboardAvoidingView>
   );

@@ -528,7 +528,7 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={styles.screenContainer}
       >
         {/* ── TOP HERO WITH CURVED ARC (Fixed header, seamless status bar extension) ── */}

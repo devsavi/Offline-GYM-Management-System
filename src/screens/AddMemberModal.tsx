@@ -695,7 +695,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
       style={styles.screenContainer}
     >
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />

@@ -104,7 +104,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={[]}>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
 
       {/* Top Header Bar */}
@@ -146,7 +146,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
       </View>
 
       {/* Horizontal Sliding Tab Screens */}
-      <View style={styles.body}>
+      <View style={[styles.body, { paddingBottom: 66 + Math.max(insets.bottom + 8, Platform.OS === 'ios' ? 24 : 16) }]}>
         <Animated.View
           style={[
             styles.pagesTrack,
@@ -297,7 +297,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
     overflow: 'hidden',
-    paddingBottom: 88,   // Reserve space for the floating pill navbar
   },
   pagesTrack: {
     flex: 1,

@@ -27,6 +27,13 @@ export const DEFAULT_EXERCISES: Omit<Exercise, 'is_custom'>[] = [
   { id: 'ex_ch_23', name: 'Chest Bench Dip', category: 'Chest', description: 'Bench dip with elbows flared to emphasize lower pectoral and tricep activation through a deep dip range.', image_uri: '/exercises/chest/chest_bench_dip.webp' },
   { id: 'ex_ch_24', name: 'Bent Arm Chest Stretch', category: 'Chest', description: 'Static pectoral stretch with a 90-degree elbow bend against a wall or doorframe targeting mid-chest flexibility.', image_uri: '/exercises/chest/bent_arm_chest_stretch.webp' },
   { id: 'ex_ch_25', name: 'Cable Decline Fly', category: 'Chest', description: 'Cable fly with a downward arc path targeting the lower pectoral fibers with constant cable tension.', image_uri: '/exercises/chest/cable_decline_fly.webp' },
+  { id: 'ex_ch_26', name: 'Smith Bench Press', category: 'Chest', description: 'Flat bench press on a Smith machine providing a guided bar path for safe heavy chest loading.', image_uri: '/exercises/chest/smith_bench_press.webp' },
+  { id: 'ex_ch_27', name: 'Incline Fly', category: 'Chest', description: 'Dumbbell fly on an incline bench stretching and contracting the upper pectoral fibers through a wide arc.', image_uri: '/exercises/chest/incline_fly.webp' },
+  { id: 'ex_ch_28', name: 'Lever Pec Deck Fly', category: 'Chest', description: 'Machine pec deck fly isolating the pectorals through a fixed lever arc with consistent resistance.', image_uri: '/exercises/chest/lever_pec_deck_fly.webp' },
+  { id: 'ex_ch_29', name: 'Dumbbell Bench Press', category: 'Chest', description: 'Flat bench press with dumbbells allowing independent arm movement and a deeper stretch at the bottom.', image_uri: '/exercises/chest/dumbbell_bench_press.webp' },
+  { id: 'ex_ch_30', name: 'Dumbbell Incline Bench Press', category: 'Chest', description: 'Incline dumbbell press targeting the upper chest with independent stabilization on each side.', image_uri: '/exercises/chest/dumbbell_incline_bench_press.webp' },
+  { id: 'ex_ch_31', name: 'Incline Bench Press', category: 'Chest', description: 'Barbell press on an incline bench emphasizing upper pectoral and anterior deltoid development.', image_uri: '/exercises/chest/incline_bench_press.webp' },
+  { id: 'ex_ch_32', name: 'Lever Seated Fly', category: 'Chest', description: 'Seated machine fly using a lever mechanism for controlled pectoral adduction and isolation.', image_uri: '/exercises/chest/lever_seated_fly.webp' },
 
   // 2. Back
   { id: 'ex_bk_1', name: 'Barbell Deadlift', category: 'Back', description: 'Full posterior chain strength builder from floor to lockout.' },

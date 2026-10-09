@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,16 +6,16 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   StatusBar,
   Alert,
   Image,
   Dimensions,
   Animated,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -46,6 +46,8 @@ interface GymLocItem {
 
 export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
   const { trainer, locations, saveTrainerProfile, createLocation, selectLocation } = useGymStore();
+  const insets = useSafeAreaInsets();
+  const bottomPad = Math.max(insets.bottom + 16, 48);
 
   // First-time vs returning user check
   const isFirstTime = !trainer || locations.length === 0;
@@ -78,6 +80,21 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
   const [currentLocAddress, setCurrentLocAddress] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Track keyboard height to shrink the ScrollView so it scrolls focused inputs into view
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+    });
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
+
   // ── ANIMATIONS ────────────────────────────────
   const containerTranslateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const containerOpacity = useRef(new Animated.Value(0)).current;
@@ -89,6 +106,10 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
 
   // Active step progress dot animation (0 = profile, 1 = pin, 2 = locations)
   const activeStepAnim = useRef(new Animated.Value(0)).current;
+
+  // ScrollView refs for programmatic scrolling to focused inputs
+  const profileScrollRef = useRef<ScrollView>(null);
+  const locationsScrollRef = useRef<ScrollView>(null);
 
   const getStepIndex = (step: SetupStep) => {
     switch (step) {
@@ -449,19 +470,19 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
   // ─────────────────────────────────────────────
   if (view === 'selectLocation') {
     return (
-      <View style={styles.heroContainer}>
+      <View style={[styles.heroContainer, { minHeight: SCREEN_HEIGHT }]}>
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
         <Image source={BG_IMAGE} style={styles.heroBgImage} resizeMode="cover" />
         <View style={styles.heroOverlay} />
 
-        <SafeAreaView style={styles.heroCenterBlock} pointerEvents="box-none">
+        <View style={styles.heroCenterBlock} pointerEvents="box-none">
           <View style={styles.titleWrapper}>
             <Text style={styles.heroAppName}>GripState</Text>
             <Text style={styles.heroTagline}>Welcome back, {trainer?.name || 'Trainer'}.</Text>
           </View>
-        </SafeAreaView>
+        </View>
 
-        <View style={styles.heroBottomBlock}>
+        <View style={[styles.heroBottomBlock, { paddingBottom: bottomPad }]}>
           <Text style={styles.selectLocLabel}>Select your active gym location</Text>
 
           {locations.map((loc) => (
@@ -504,26 +525,30 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
         style={[styles.heroFullContent, { opacity: heroOpacity }]}
         pointerEvents={view === 'hero' ? 'auto' : 'none'}
       >
-        <SafeAreaView style={styles.heroCenterBlock} pointerEvents="box-none">
+        <View style={styles.heroCenterBlock} pointerEvents="box-none">
           <View style={styles.titleWrapper}>
             <Text style={styles.heroAppName}>GripState</Text>
             <Text style={styles.heroTagline}>
               The professional gym{'\n'}management platform.
             </Text>
           </View>
-        </SafeAreaView>
-
-        <View style={styles.heroBottomBlock}>
-          <TouchableOpacity
-            style={styles.heroGetStartedBtn}
-            onPress={openSetup}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.heroGetStartedText}>Get Started</Text>
-          </TouchableOpacity>
-
-          <Text style={styles.heroFooterNote}>Developed by WhirlTec Solutions</Text>
         </View>
+      </Animated.View>
+
+      {/* ── HERO BOTTOM BLOCK (direct child of rootContainer for correct bottom anchor) ── */}
+      <Animated.View
+        style={[styles.heroBottomBlock, { paddingBottom: bottomPad, opacity: heroOpacity }]}
+        pointerEvents={view === 'hero' ? 'auto' : 'none'}
+      >
+        <TouchableOpacity
+          style={styles.heroGetStartedBtn}
+          onPress={openSetup}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.heroGetStartedText}>Get Started</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.heroFooterNote}>Developed by WhirlTec Solutions</Text>
       </Animated.View>
 
       {/* ── TOP FOLIAGE HEADER (Synchronized with container animation) ── */}
@@ -563,12 +588,17 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
         <Animated.View
           style={[
             styles.animatedSheetContainer,
-            {
-              transform: [{ translateY: containerTranslateY }],
-              opacity: containerOpacity,
-            },
           ]}
         >
+          <Animated.View
+            style={[
+              { flex: 1 },
+              {
+                transform: [{ translateY: containerTranslateY }],
+                opacity: containerOpacity,
+              },
+            ]}
+          >
           {/* Step Progress Indicator - Animated Expanding Pill UI */}
           <View style={styles.stepProgressRow}>
             <Animated.View
@@ -612,15 +642,13 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
           >
             {/* ──────── STEP 1: PERSONAL DETAILS (REGISTER) ──────── */}
             {currentStep === 'profile' && (
-              <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              <ScrollView
+                ref={profileScrollRef}
+                contentContainerStyle={[styles.sheetScrollContent, { paddingBottom: keyboardHeight + 16 }]}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
                 style={{ flex: 1 }}
               >
-                <ScrollView
-                  contentContainerStyle={styles.sheetScrollContent}
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
-                >
                   {/* Avatar Picker */}
                   <View style={styles.avatarPickerRow}>
                     <TouchableOpacity
@@ -674,6 +702,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                       value={firstName}
                       onChangeText={setFirstName}
                       autoCapitalize="words"
+                      onFocus={() => profileScrollRef.current?.scrollTo({ y: 0, animated: true })}
                     />
 
                     {/* Last Name */}
@@ -684,6 +713,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                       value={lastName}
                       onChangeText={setLastName}
                       autoCapitalize="words"
+                      onFocus={() => profileScrollRef.current?.scrollTo({ y: 60, animated: true })}
                     />
 
                     {/* Role */}
@@ -694,6 +724,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                       value={role}
                       onChangeText={setRole}
                       autoCapitalize="words"
+                      onFocus={() => profileScrollRef.current?.scrollTo({ y: 120, animated: true })}
                     />
 
                     {/* Age */}
@@ -705,6 +736,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                       onChangeText={setAge}
                       keyboardType="number-pad"
                       maxLength={3}
+                      onFocus={() => profileScrollRef.current?.scrollTo({ y: 180, animated: true })}
                     />
 
                     {/* Address */}
@@ -714,6 +746,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                       placeholderTextColor="#8B9E93"
                       value={address}
                       onChangeText={setAddress}
+                      onFocus={() => profileScrollRef.current?.scrollTo({ y: 240, animated: true })}
                     />
                   </View>
 
@@ -726,8 +759,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                     <Text style={styles.pillActionBtnText}>Next</Text>
                     <Ionicons name="arrow-forward" size={18} color="#FFFFFF" style={{ marginLeft: 8 }} />
                   </TouchableOpacity>
-                </ScrollView>
-              </KeyboardAvoidingView>
+              </ScrollView>
             )}
 
             {/* ──────── STEP 2: PIN SETUP (Matching Image 2) ──────── */}
@@ -837,15 +869,13 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
 
             {/* ──────── STEP 3: MULTIPLE GYM LOCATIONS ──────── */}
             {currentStep === 'locations' && (
-              <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              <ScrollView
+                ref={locationsScrollRef}
+                contentContainerStyle={[styles.sheetScrollContent, { paddingBottom: keyboardHeight + 16 }]}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
                 style={{ flex: 1 }}
               >
-                <ScrollView
-                  contentContainerStyle={styles.sheetScrollContent}
-                  keyboardShouldPersistTaps="handled"
-                  showsVerticalScrollIndicator={false}
-                >
                   <View style={styles.formFieldsTopWrapper}>
                     {/* Added Locations Cards */}
                     {locationsList.map((item, index) => (
@@ -882,6 +912,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                         placeholderTextColor="#8B9E93"
                         value={currentLocName}
                         onChangeText={setCurrentLocName}
+                        onFocus={() => locationsScrollRef.current?.scrollTo({ y: locationsList.length * 80, animated: true })}
                       />
 
                       <TextInput
@@ -890,6 +921,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                         placeholderTextColor="#8B9E93"
                         value={currentLocAddress}
                         onChangeText={setCurrentLocAddress}
+                        onFocus={() => locationsScrollRef.current?.scrollTo({ y: locationsList.length * 80 + 60, animated: true })}
                       />
 
                       <TouchableOpacity
@@ -919,10 +951,10 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
                       </>
                     )}
                   </TouchableOpacity>
-                </ScrollView>
-              </KeyboardAvoidingView>
+              </ScrollView>
             )}
           </Animated.View>
+        </Animated.View>
         </Animated.View>
       )}
     </View>
@@ -933,6 +965,7 @@ const styles = StyleSheet.create({
   rootContainer: {
     flex: 1,
     backgroundColor: '#050E07',
+    minHeight: SCREEN_HEIGHT,
   },
 
   // ── HERO FULL ──────────────────────────────────
@@ -960,12 +993,11 @@ const styles = StyleSheet.create({
   },
   heroFullContent: {
     ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-start',
   },
   heroCenterBlock: {
-    position: 'absolute',
-    top: '18%',
-    left: 24,
-    right: 24,
+    marginTop: Math.round(SCREEN_HEIGHT * 0.16),
+    paddingHorizontal: 24,
     alignItems: 'center',
   },
   titleWrapper: {
@@ -1127,6 +1159,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: CONTAINER_TOP, // 34% from top, perfectly proportioned
+    flex: 1,
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 60, // Signature asymmetrical curved swoop
     borderTopRightRadius: 0,  // Flat right shoulder matching Image 1
