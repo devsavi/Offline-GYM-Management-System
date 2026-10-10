@@ -1838,7 +1838,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
                 </Text>
                 <Text style={styles.sheetModalSubtitle}>
                   {exerciseModalMode === 'library'
-                    ? `${filteredExercises.length} movements available offline`
+                    ? `${filteredExercises.length} exercises available`
                     : 'Create and add custom movement to routine'}
                 </Text>
               </View>

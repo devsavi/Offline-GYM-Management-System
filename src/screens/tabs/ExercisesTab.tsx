@@ -259,7 +259,7 @@ export const ExercisesTab: React.FC = () => {
           <View>
             <Text style={styles.title}>Exercise Library</Text>
             <Text style={styles.subtitle}>
-              {filteredExercises.length} movements available offline
+              {filteredExercises.length} exercises available
             </Text>
           </View>
           <TouchableOpacity
