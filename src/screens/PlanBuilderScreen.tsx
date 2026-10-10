@@ -9,7 +9,6 @@ import {
   Modal,
   StyleSheet,
   StatusBar,
-  Alert,
   Image,
   ImageBackground,
   KeyboardAvoidingView,
@@ -27,6 +26,7 @@ import { RootStackParamList } from '../navigation/types';
 import { Exercise, ExerciseCategory, Member, PlanExerciseItem } from '../types';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { ExerciseImage } from '../components/ExerciseImage';
+import { showAlert } from '../utils/alert';
 
 const TOP_BAR_BG = require('../../public/top_bar.webp');
 const PLACEHOLDER_COLOR = '#8B9E93';
@@ -225,7 +225,7 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Needed', 'Please allow media library access to pick an exercise image.');
+        showAlert('Permission Needed', 'Please allow media library access to pick an exercise image.');
         return;
       }
 
@@ -247,13 +247,13 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
       }
     } catch (err: any) {
       console.error('Image pick error:', err);
-      Alert.alert('Error', 'Could not open image picker.');
+      showAlert('Error', 'Could not open image picker.');
     }
   };
 
   const handleCreateAndAddCustomExercise = async () => {
     if (!customName.trim()) {
-      Alert.alert('Required', 'Please enter exercise name.');
+      showAlert('Required', 'Please enter exercise name.');
       return;
     }
     setIsSubmitting(true);
@@ -273,7 +273,7 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
       setExerciseModalMode('library');
       setShowExerciseModal(false);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to add custom exercise');
+      showAlert('Error', e.message || 'Failed to add custom exercise');
     } finally {
       setIsSubmitting(false);
     }
@@ -296,11 +296,11 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const handleSavePlan = async () => {
     if (!title.trim()) {
-      Alert.alert('Required', 'Please enter a plan title.');
+      showAlert('Required', 'Please enter a plan title.');
       return;
     }
     if (selectedExercises.length === 0) {
-      Alert.alert('Required', 'Please add at least one exercise to this workout routine.');
+      showAlert('Required', 'Please add at least one exercise to this workout routine.');
       return;
     }
 
@@ -318,7 +318,7 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
 
       // Calendar sync option
       if (member) {
-        Alert.alert(
+        showAlert(
           'Plan Saved Successfully',
           'The workout plan has been activated for this member. Would you like to sync this schedule with device calendar?',
           [
@@ -340,7 +340,7 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
         navigation.goBack();
       }
     } catch (e: any) {
-      Alert.alert('Save Error', e.message || 'Failed to save workout plan');
+      showAlert('Save Error', e.message || 'Failed to save workout plan');
     }
   };
 

@@ -7,7 +7,6 @@ import {
   FlatList,
   TextInput,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -15,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useGymStore } from '../store/useGymStore';
 import { Location } from '../types';
 import { colors, rounded, shadows } from '../theme/colors';
+import { showAlert } from '../utils/alert';
 
 interface LocationSwitcherModalProps {
   visible: boolean;
@@ -40,7 +40,7 @@ export const LocationSwitcherModal: React.FC<LocationSwitcherModalProps> = ({
 
   const handleCreate = async () => {
     if (!newLocName.trim()) {
-      Alert.alert('Required', 'Please enter a location name');
+      showAlert('Required', 'Please enter a location name');
       return;
     }
 
@@ -53,7 +53,7 @@ export const LocationSwitcherModal: React.FC<LocationSwitcherModalProps> = ({
       setIsAddingNew(false);
       onClose();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to create branch');
+      showAlert('Error', e.message || 'Failed to create branch');
     } finally {
       setIsSubmitting(false);
     }

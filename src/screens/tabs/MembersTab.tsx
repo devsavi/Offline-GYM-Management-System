@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   FlatList,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   RefreshControl,
   Image,
@@ -16,6 +15,7 @@ import { useGymStore } from '../../store/useGymStore';
 import { colors, rounded, shadows } from '../../theme/colors';
 import { Member } from '../../types';
 import { checkInService } from '../../database/services/checkInService';
+import { showAlert } from '../../utils/alert';
 
 interface MembersTabProps {
   onSelectMember: (memberId: string) => void;
@@ -50,10 +50,10 @@ export const MembersTab: React.FC<MembersTabProps> = ({
     if (!selectedLocation) return;
     try {
       await checkInService.recordCheckIn(member.id, selectedLocation.id, 'Checked In');
-      Alert.alert('Checked In ✅', `${member.name} has been marked present for today.`);
+      showAlert('Checked In ✅', `${member.name} has been marked present for today.`);
       refreshDashboard();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Could not record check-in');
+      showAlert('Error', e.message || 'Could not record check-in');
     }
   };
 

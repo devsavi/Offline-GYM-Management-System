@@ -8,7 +8,6 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ImageBackground,
@@ -23,6 +22,7 @@ import { useGymStore } from '../store/useGymStore';
 import { colors, rounded, shadows, buttonStyles } from '../theme/colors';
 import { trainerService } from '../database/services/trainerService';
 import { Location, PaymentPlan, PaymentPlanDurationUnit } from '../types';
+import { showAlert } from '../utils/alert';
 
 const TOP_BAR_BG = require('../../public/top_bar.webp');
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -173,7 +173,7 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please allow photo access to update your profile picture.');
+        showAlert('Permission needed', 'Please allow photo access to update your profile picture.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -186,13 +186,13 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
         setAvatarUri(result.assets[0].uri);
       }
     } catch (e) {
-      Alert.alert('Error', 'Could not open image picker.');
+      showAlert('Error', 'Could not open image picker.');
     }
   };
 
   const handleSavePersonal = async () => {
     if (!firstName.trim()) {
-      Alert.alert('Required', 'Please enter your First Name');
+      showAlert('Required', 'Please enter your First Name');
       return;
     }
 
@@ -212,9 +212,9 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
         address: address.trim() || undefined,
         avatar_uri: avatarUri || undefined,
       });
-      Alert.alert('Success', 'Personal profile updated successfully.');
+      showAlert('Success', 'Personal profile updated successfully.');
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to update personal details');
+      showAlert('Error', e.message || 'Failed to update personal details');
     } finally {
       setIsSavingPersonal(false);
     }
@@ -245,29 +245,29 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
 
   const handleSaveLocationModal = async () => {
     if (!locFormName.trim()) {
-      Alert.alert('Required', 'Branch name is required.');
+      showAlert('Required', 'Branch name is required.');
       return;
     }
     try {
       if (editingLocId) {
         await updateLocation(editingLocId, locFormName.trim(), locFormDesc.trim(), locFormAddress.trim());
-        Alert.alert('Updated', 'Location details updated.');
+        showAlert('Updated', 'Location details updated.');
       } else {
         await createLocation(locFormName.trim(), locFormDesc.trim(), locFormAddress.trim());
-        Alert.alert('Success', 'New gym branch registered.');
+        showAlert('Success', 'New gym branch registered.');
       }
       setIsLocationModalOpen(false);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to save location.');
+      showAlert('Error', e.message || 'Failed to save location.');
     }
   };
 
   const handleDeleteLocation = (id: string, branchName: string) => {
     if (locations.length <= 1) {
-      Alert.alert('Cannot Delete', 'You must have at least one gym branch.');
+      showAlert('Cannot Delete', 'You must have at least one gym branch.');
       return;
     }
-    Alert.alert(
+    showAlert(
       'Delete Branch',
       `Are you sure you want to delete "${branchName}"?`,
       [
@@ -350,19 +350,19 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
     const currency = getEffectiveCurrency();
 
     if (!planName.trim()) {
-      Alert.alert('Required', 'Plan name is required.');
+      showAlert('Required', 'Plan name is required.');
       return;
     }
     if (isNaN(amountNum) || amountNum <= 0) {
-      Alert.alert('Invalid', 'Please enter a valid amount.');
+      showAlert('Invalid', 'Please enter a valid amount.');
       return;
     }
     if (!currency) {
-      Alert.alert('Required', 'Please specify a currency.');
+      showAlert('Required', 'Please specify a currency.');
       return;
     }
     if (isNaN(durationNum) || durationNum <= 0) {
-      Alert.alert('Invalid', 'Please enter a valid duration.');
+      showAlert('Invalid', 'Please enter a valid duration.');
       return;
     }
 
@@ -380,19 +380,19 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
 
       if (editingPlanId) {
         await updatePaymentPlan(editingPlanId, data);
-        Alert.alert('Updated', 'Payment plan updated successfully.');
+        showAlert('Updated', 'Payment plan updated successfully.');
       } else {
         await createPaymentPlan(data);
-        Alert.alert('Created', 'New payment plan saved.');
+        showAlert('Created', 'New payment plan saved.');
       }
       resetPlanForm();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to save plan.');
+      showAlert('Error', e.message || 'Failed to save plan.');
     }
   };
 
   const handleDeletePlan = (plan: PaymentPlan) => {
-    Alert.alert(
+    showAlert(
       'Delete Plan',
       `Delete "${plan.name}"? This won't affect existing member payments.`,
       [
@@ -419,23 +419,23 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
   const handleUpdatePin = async () => {
     if (hasExistingPin) {
       if (!currentPin.trim()) {
-        Alert.alert('Required', 'Please enter your current 4-digit PIN');
+        showAlert('Required', 'Please enter your current 4-digit PIN');
         return;
       }
       const isCorrect = await trainerService.verifyPin(currentPin.trim());
       if (!isCorrect) {
-        Alert.alert('Security Check Failed', 'Current PIN does not match.');
+        showAlert('Security Check Failed', 'Current PIN does not match.');
         return;
       }
     }
 
     if (newPin.trim().length !== 4) {
-      Alert.alert('Invalid PIN', 'New PIN must be exactly 4 digits.');
+      showAlert('Invalid PIN', 'New PIN must be exactly 4 digits.');
       return;
     }
 
     if (newPin !== confirmNewPin) {
-      Alert.alert('Mismatch', 'New PIN and Confirm PIN do not match.');
+      showAlert('Mismatch', 'New PIN and Confirm PIN do not match.');
       return;
     }
 
@@ -445,19 +445,19 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
       setCurrentPin('');
       setNewPin('');
       setConfirmNewPin('');
-      Alert.alert(
+      showAlert(
         'PIN Updated',
         'Your security PIN has been updated successfully. You will be asked for this PIN next time you open the app.'
       );
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to update PIN');
+      showAlert('Error', e.message || 'Failed to update PIN');
     } finally {
       setIsSavingPin(false);
     }
   };
 
   const handleRemovePin = () => {
-    Alert.alert(
+    showAlert(
       'Remove PIN Protection',
       'Are you sure? Anyone opening the app will be able to access gym data without a password.',
       [
@@ -467,7 +467,7 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
           style: 'destructive',
           onPress: async () => {
             await removeTrainerPin();
-            Alert.alert('Security Notice', 'PIN protection has been removed.');
+            showAlert('Security Notice', 'PIN protection has been removed.');
           },
         },
       ]
@@ -481,7 +481,7 @@ export const TrainerProfileModal: React.FC<TrainerProfileModalProps> = ({
   };
 
   const handleResetAllData = () => {
-    Alert.alert(
+    showAlert(
       'Reset All App Data',
       'This will permanently delete ALL gym data including trainer profile, all members, locations, payments, and history. This action cannot be undone.\n\nAre you absolutely sure?',
       [

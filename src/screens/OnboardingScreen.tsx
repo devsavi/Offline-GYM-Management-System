@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ScrollView,
   StatusBar,
-  Alert,
   Image,
   Dimensions,
   Animated,
@@ -22,6 +21,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { useGymStore } from '../store/useGymStore';
 import { colors, rounded } from '../theme/colors';
+import { showAlert } from '../utils/alert';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Onboarding'>;
 
@@ -277,7 +277,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please allow photo access to pick a profile picture.');
+        showAlert('Permission needed', 'Please allow photo access to pick a profile picture.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -290,18 +290,18 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
         setAvatarUri(result.assets[0].uri);
       }
     } catch (e) {
-      Alert.alert('Error', 'Could not open image picker.');
+      showAlert('Error', 'Could not open image picker.');
     }
   };
 
   // ── STEP 1: SUBMIT PROFILE ───────────────────
   const handleNextFromProfile = () => {
     if (!firstName.trim()) {
-      Alert.alert('Required Field', 'Please enter your First Name.');
+      showAlert('Required Field', 'Please enter your First Name.');
       return;
     }
     if (!lastName.trim()) {
-      Alert.alert('Required Field', 'Please enter your Last Name.');
+      showAlert('Required Field', 'Please enter your Last Name.');
       return;
     }
     transitionToStep('pin', 'forward');
@@ -361,7 +361,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
   // ── STEP 3: ADD LOCATIONS ─────────────────────
   const handleAddLocationToList = () => {
     if (!currentLocName.trim()) {
-      Alert.alert('Required', 'Please enter a Location / Branch Name.');
+      showAlert('Required', 'Please enter a Location / Branch Name.');
       return;
     }
     const newLoc: GymLocItem = {
@@ -390,7 +390,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     if (allLocations.length === 0) {
-      Alert.alert('Location Required', 'Please add at least one Gym Location to complete setup.');
+      showAlert('Location Required', 'Please add at least one Gym Location to complete setup.');
       return;
     }
 
@@ -428,7 +428,7 @@ export const OnboardingScreen: React.FC<Props> = ({ navigation }) => {
 
       navigation.replace('Dashboard');
     } catch (err: any) {
-      Alert.alert('Setup Error', err.message || 'Failed to complete setup');
+      showAlert('Setup Error', err.message || 'Failed to complete setup');
       setIsSubmitting(false);
     }
   };

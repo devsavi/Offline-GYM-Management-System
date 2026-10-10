@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useGymStore } from './src/store/useGymStore';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { colors } from './src/theme/colors';
+import { AlertProviderWithRegistration } from './src/utils/alert';
 
 export default function App() {
   const { isInitialized, initialize } = useGymStore();
@@ -36,8 +37,10 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
-      <AppNavigator />
+      <AlertProviderWithRegistration>
+        <StatusBar barStyle="light-content" backgroundColor={colors.primaryDark} />
+        <AppNavigator />
+      </AlertProviderWithRegistration>
     </SafeAreaProvider>
   );
 }

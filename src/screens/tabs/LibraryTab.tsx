@@ -5,10 +5,10 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
-  Alert,
   TextInput,
   Modal,
 } from 'react-native';
+import { showAlert } from '../../utils/alert';
 import { Ionicons } from '@expo/vector-icons';
 import { useGymStore } from '../../store/useGymStore';
 import { measurementService } from '../../database/services/measurementService';
@@ -40,7 +40,7 @@ export const LibraryTab: React.FC = () => {
   const handleAddField = async () => {
     if (!selectedLocation) return;
     if (!fieldName.trim()) {
-      Alert.alert('Required', 'Please enter a field name');
+      showAlert('Required', 'Please enter a field name');
       return;
     }
     try {
@@ -52,9 +52,9 @@ export const LibraryTab: React.FC = () => {
       setFieldName('');
       setModalVisible(false);
       loadFields();
-      Alert.alert('Field Created', `Added ${fieldName} to body measurements tracking.`);
+      showAlert('Field Created', `Added ${fieldName} to body measurements tracking.`);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to create measurement field');
+      showAlert('Error', e.message || 'Failed to create measurement field');
     }
   };
 

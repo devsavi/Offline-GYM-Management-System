@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   StatusBar,
-  Alert,
   Modal,
   TextInput,
   ActivityIndicator,
@@ -42,6 +41,7 @@ import {
 } from '../types';
 import { useGymStore } from '../store/useGymStore';
 import { ExerciseImage } from '../components/ExerciseImage';
+import { showAlert } from '../utils/alert';
 
 const TOP_BAR_BG = require('../../public/top_bar.webp');
 const PLACEHOLDER_COLOR = '#8B9E93';
@@ -229,7 +229,7 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
         setEditStatus(m.status || 'active');
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to load member profile');
+      showAlert('Error', e.message || 'Failed to load member profile');
     } finally {
       setLoading(false);
     }
@@ -316,7 +316,7 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Needed', 'Please allow photo library access to change profile photo.');
+        showAlert('Permission Needed', 'Please allow photo library access to change profile photo.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -333,13 +333,13 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
         }
       }
     } catch {
-      Alert.alert('Error', 'Could not open photo library.');
+      showAlert('Error', 'Could not open photo library.');
     }
   };
 
   const handleSaveEdit = async () => {
     if (!editName.trim()) {
-      Alert.alert('Required', 'Please enter member full name.');
+      showAlert('Required', 'Please enter member full name.');
       return;
     }
 
@@ -364,9 +364,9 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
       await loadAllMemberData();
       await refreshDashboard();
       setIsEditing(false);
-      Alert.alert('Success', 'Member details updated successfully.');
+      showAlert('Success', 'Member details updated successfully.');
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to update member profile');
+      showAlert('Error', e.message || 'Failed to update member profile');
     } finally {
       setIsSavingEdit(false);
     }
@@ -422,15 +422,15 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
       setShowMeasModal(false);
       resetMeasurementForm();
       loadAllMemberData();
-      Alert.alert('Saved', 'Measurement recorded successfully.');
+      showAlert('Saved', 'Measurement recorded successfully.');
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to record measurement');
+      showAlert('Error', e.message || 'Failed to record measurement');
     }
   };
 
   const handleCreateInlineCustomField = async () => {
     if (!selectedLocation || !inlineFieldName.trim()) {
-      Alert.alert('Required', 'Please enter a metric name');
+      showAlert('Required', 'Please enter a metric name');
       return;
     }
     try {
@@ -446,7 +446,7 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
         setCustomFields(updated);
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Could not add custom metric');
+      showAlert('Error', e.message || 'Could not add custom metric');
     }
   };
 
@@ -499,7 +499,7 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
       setCoveredMemberIds(coveredMemberIds.filter((id) => id !== mId));
     } else {
       if (coveredMemberIds.length >= maxAdditional) {
-        Alert.alert(
+        showAlert(
           'Limit Reached',
           `This plan allows up to ${maxAdditional} additional family member${maxAdditional > 1 ? 's' : ''}.`
         );
@@ -532,11 +532,11 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const handleAssignPlan = async () => {
     if (!selectedPlan || !selectedLocation || !member) {
-      Alert.alert('Missing Info', 'Please select a payment plan first.');
+      showAlert('Missing Info', 'Please select a payment plan first.');
       return;
     }
     if (!payStartDate || !payEndDate) {
-      Alert.alert('Missing Dates', 'Please provide start and end dates.');
+      showAlert('Missing Dates', 'Please provide start and end dates.');
       return;
     }
 
@@ -561,15 +561,15 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
       resetPaymentModal();
       loadAllMemberData();
       refreshDashboard();
-      Alert.alert('Success ✅', `"${selectedPlan.name}" has been assigned to ${member.name}.`);
+      showAlert('Success ✅', `"${selectedPlan.name}" has been assigned to ${member.name}.`);
     } catch (e: any) {
-      Alert.alert('Error', e.message);
+      showAlert('Error', e.message);
     }
   };
 
   const handleTogglePaymentStatus = (payment: Payment) => {
     const nextStatus = payment.status === 'paid' ? 'unpaid' : 'paid';
-    Alert.alert(
+    showAlert(
       nextStatus === 'paid' ? 'Mark as Paid?' : 'Mark as Unpaid?',
       nextStatus === 'paid'
         ? `Confirm payment received for "${payment.plan_name || payment.period_label || 'this plan'}"?`
@@ -601,7 +601,7 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   const handleDeletePayment = async (payment: Payment) => {
-    Alert.alert(
+    showAlert(
       'Delete Payment Record',
       `Remove this "${payment.plan_name || payment.period_label}" payment record?`,
       [
@@ -626,7 +626,7 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
     try {
       await exportWorkoutPlanPDF(member, plan, selectedLocation?.name || 'GripState');
     } catch (e: any) {
-      Alert.alert('PDF Export Error', e.message);
+      showAlert('PDF Export Error', e.message);
     }
   };
 
@@ -635,12 +635,12 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
     try {
       const eventId = await addWorkoutPlanToCalendar(member.name, plan);
       if (eventId) {
-        Alert.alert('Calendar Synced 📅', `Workout schedule added to device calendar with reminders.`);
+        showAlert('Calendar Synced 📅', `Workout schedule added to device calendar with reminders.`);
       } else {
-        Alert.alert('Calendar Notice', 'Calendar permissions are required or calendar could not be accessed.');
+        showAlert('Calendar Notice', 'Calendar permissions are required or calendar could not be accessed.');
       }
     } catch (e: any) {
-      Alert.alert('Calendar Error', e.message);
+      showAlert('Calendar Error', e.message);
     }
   };
 

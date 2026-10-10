@@ -8,7 +8,6 @@ import {
   FlatList,
   StyleSheet,
   StatusBar,
-  Alert,
   Image,
   ImageBackground,
   KeyboardAvoidingView,
@@ -41,6 +40,7 @@ import {
 } from './MemberProfileScreen';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { ExerciseImage } from '../components/ExerciseImage';
+import { showAlert } from '../utils/alert';
 
 const TOP_BAR_BG = require('../../public/top_bar.webp');
 const PLACEHOLDER_COLOR = '#8B9E93';
@@ -202,7 +202,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Needed', 'Please grant photo library access to upload a profile photo.');
+        showAlert('Permission Needed', 'Please grant photo library access to upload a profile photo.');
         return;
       }
 
@@ -217,7 +217,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
         setAvatarUri(result.assets[0].uri);
       }
     } catch {
-      Alert.alert('Error', 'Could not open photo library.');
+      showAlert('Error', 'Could not open photo library.');
     }
   };
 
@@ -283,7 +283,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Needed', 'Please allow media library access to pick an exercise image.');
+        showAlert('Permission Needed', 'Please allow media library access to pick an exercise image.');
         return;
       }
 
@@ -305,7 +305,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
       }
     } catch (err: any) {
       console.error('Image pick error:', err);
-      Alert.alert('Error', 'Could not open image picker.');
+      showAlert('Error', 'Could not open image picker.');
     }
   };
 
@@ -362,7 +362,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
 
   const handleCreateAndAddCustomExercise = async () => {
     if (!customExerciseName.trim()) {
-      Alert.alert('Required', 'Please enter exercise name.');
+      showAlert('Required', 'Please enter exercise name.');
       return;
     }
     setIsSubmittingCustomExercise(true);
@@ -386,7 +386,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
       setExerciseModalMode('library');
       setShowExerciseModal(false);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to add custom exercise');
+      showAlert('Error', e.message || 'Failed to add custom exercise');
     } finally {
       setIsSubmittingCustomExercise(false);
     }
@@ -507,7 +507,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
       setCoveredMemberIds(coveredMemberIds.filter((id) => id !== mId));
     } else {
       if (coveredMemberIds.length >= maxAdditional) {
-        Alert.alert(
+        showAlert(
           'Limit Reached',
           `This plan allows up to ${maxAdditional} additional family member${maxAdditional > 1 ? 's' : ''}.`
         );
@@ -521,11 +521,11 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
   const handleSave = async () => {
     if (!name.trim()) {
       setActiveTab('info');
-      Alert.alert('Required', 'Please enter member full name in the Info tab.');
+      showAlert('Required', 'Please enter member full name in the Info tab.');
       return;
     }
     if (!selectedLocation) {
-      Alert.alert('Error', 'No active branch selected.');
+      showAlert('Error', 'No active branch selected.');
       return;
     }
 
@@ -662,10 +662,10 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
       }
 
       await refreshDashboard();
-      Alert.alert('Registration Complete 🎉', `${name} registered successfully with all details.`);
+      showAlert('Registration Complete 🎉', `${name} registered successfully with all details.`);
       navigation.goBack();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Could not register member');
+      showAlert('Error', e.message || 'Could not register member');
     } finally {
       setIsSaving(false);
     }

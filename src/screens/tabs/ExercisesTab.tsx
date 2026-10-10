@@ -9,7 +9,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   Modal,
-  Alert,
   Platform,
   Image,
 } from 'react-native';
@@ -20,6 +19,7 @@ import { Exercise, ExerciseCategory } from '../../types';
 import { colors, rounded, shadows } from '../../theme/colors';
 import { CategoryIcon } from '../../components/CategoryIcon';
 import { ExerciseImage } from '../../components/ExerciseImage';
+import { showAlert } from '../../utils/alert';
 
 const CATEGORIES: ('All' | ExerciseCategory)[] = [
   'All',
@@ -106,7 +106,7 @@ export const ExercisesTab: React.FC = () => {
     const custom = toDelete.filter((ex) => ex.is_custom);
 
     if (custom.length === 0) {
-      Alert.alert(
+      showAlert(
         'Cannot Delete',
         'Built-in exercises cannot be deleted. Only your custom (Added) exercises can be removed.',
         [{ text: 'OK' }]
@@ -119,7 +119,7 @@ export const ExercisesTab: React.FC = () => {
         ? `${custom.length} custom exercise(s) will be permanently deleted. ${builtIn.length} built-in exercise(s) will be skipped.`
         : `Permanently delete ${custom.length} exercise(s)? This cannot be undone.`;
 
-    Alert.alert('Delete Exercises', msg, [
+    showAlert('Delete Exercises', msg, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -132,7 +132,7 @@ export const ExercisesTab: React.FC = () => {
             exitSelectionMode();
             loadExercises();
           } catch (e: any) {
-            Alert.alert('Error', e.message || 'Failed to delete exercises.');
+            showAlert('Error', e.message || 'Failed to delete exercises.');
           }
         },
       },
@@ -173,7 +173,7 @@ export const ExercisesTab: React.FC = () => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission Needed', 'Please allow media library access to pick an exercise image.');
+        showAlert('Permission Needed', 'Please allow media library access to pick an exercise image.');
         return;
       }
 
@@ -195,13 +195,13 @@ export const ExercisesTab: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Image pick error:', err);
-      Alert.alert('Error', 'Could not open image picker.');
+      showAlert('Error', 'Could not open image picker.');
     }
   };
 
   const handleAddCustomExercise = async () => {
     if (!customName.trim()) {
-      Alert.alert('Required', 'Please enter exercise name.');
+      showAlert('Required', 'Please enter exercise name.');
       return;
     }
 
@@ -217,10 +217,10 @@ export const ExercisesTab: React.FC = () => {
       setCustomDescription('');
       setCustomImageUri('');
       setModalVisible(false);
-      Alert.alert('Success', 'New exercise registered.');
+      showAlert('Success', 'New exercise registered.');
       loadExercises();
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to add custom exercise');
+      showAlert('Error', e.message || 'Failed to add custom exercise');
     } finally {
       setIsSubmitting(false);
     }
