@@ -8,6 +8,7 @@ import {
   Alert,
   RefreshControl,
   ImageBackground,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useGymStore } from '../../store/useGymStore';
@@ -16,6 +17,11 @@ import { Member } from '../../types';
 import { checkInService } from '../../database/services/checkInService';
 
 const QUICK_ACTION_BG = require('../../../public/quick_action.webp');
+
+// Each card is half of (screenWidth - 2*16 padding - 12 gap)
+const CARD_WIDTH = (Dimensions.get('window').width - 32 - 12) / 2;
+// If the card is narrower than 160px, the horizontal (icon+text side-by-side) layout won't fit
+const USE_VERTICAL = CARD_WIDTH < 160;
 
 interface HomeTabProps {
   onNavigateTab: (tab: 'Members' | 'Exercises' | 'Library') => void;
@@ -118,13 +124,13 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             imageStyle={styles.actionCardImage}
             resizeMode="cover"
           >
-            <View style={styles.actionOverlay}>
+            <View style={[styles.actionOverlay, USE_VERTICAL && styles.actionOverlayVertical]}>
               <View style={styles.actionIconBox}>
                 <Ionicons name="person-add" size={18} color="#FFFFFF" />
               </View>
-              <View style={styles.actionTextBox}>
-                <Text style={styles.actionTitle} numberOfLines={1}>Add Member</Text>
-                <Text style={styles.actionDesc} numberOfLines={1}>Register new client</Text>
+              <View style={[styles.actionTextBox, USE_VERTICAL && styles.actionTextBoxVertical]}>
+                <Text style={[styles.actionTitle, USE_VERTICAL && styles.actionTitleVertical]} numberOfLines={1}>Add Member</Text>
+                <Text style={[styles.actionDesc, USE_VERTICAL && styles.actionDescVertical]} numberOfLines={1}>Register new client</Text>
               </View>
             </View>
           </ImageBackground>
@@ -141,13 +147,13 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             imageStyle={styles.actionCardImage}
             resizeMode="cover"
           >
-            <View style={styles.actionOverlay}>
+            <View style={[styles.actionOverlay, USE_VERTICAL && styles.actionOverlayVertical]}>
               <View style={styles.actionIconBox}>
                 <Ionicons name="list" size={18} color="#FFFFFF" />
               </View>
-              <View style={styles.actionTextBox}>
-                <Text style={styles.actionTitle} numberOfLines={1}>View Members</Text>
-                <Text style={styles.actionDesc} numberOfLines={1}>Check directory</Text>
+              <View style={[styles.actionTextBox, USE_VERTICAL && styles.actionTextBoxVertical]}>
+                <Text style={[styles.actionTitle, USE_VERTICAL && styles.actionTitleVertical]} numberOfLines={1}>View Members</Text>
+                <Text style={[styles.actionDesc, USE_VERTICAL && styles.actionDescVertical]} numberOfLines={1}>Check directory</Text>
               </View>
             </View>
           </ImageBackground>
@@ -166,13 +172,13 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             imageStyle={styles.actionCardImage}
             resizeMode="cover"
           >
-            <View style={styles.actionOverlay}>
+            <View style={[styles.actionOverlay, USE_VERTICAL && styles.actionOverlayVertical]}>
               <View style={styles.actionIconBox}>
                 <Ionicons name="barbell" size={18} color="#FFFFFF" />
               </View>
-              <View style={styles.actionTextBox}>
-                <Text style={styles.actionTitle} numberOfLines={1}>Exercises</Text>
-                <Text style={styles.actionDesc} numberOfLines={1}>Movement library</Text>
+              <View style={[styles.actionTextBox, USE_VERTICAL && styles.actionTextBoxVertical]}>
+                <Text style={[styles.actionTitle, USE_VERTICAL && styles.actionTitleVertical]} numberOfLines={1}>Exercises</Text>
+                <Text style={[styles.actionDesc, USE_VERTICAL && styles.actionDescVertical]} numberOfLines={1}>Movement library</Text>
               </View>
             </View>
           </ImageBackground>
@@ -189,13 +195,13 @@ export const HomeTab: React.FC<HomeTabProps> = ({
             imageStyle={styles.actionCardImage}
             resizeMode="cover"
           >
-            <View style={styles.actionOverlay}>
+            <View style={[styles.actionOverlay, USE_VERTICAL && styles.actionOverlayVertical]}>
               <View style={styles.actionIconBox}>
                 <Ionicons name="library" size={18} color="#FFFFFF" />
               </View>
-              <View style={styles.actionTextBox}>
-                <Text style={styles.actionTitle} numberOfLines={1}>Library Tools</Text>
-                <Text style={styles.actionDesc} numberOfLines={1}>Plans & metrics</Text>
+              <View style={[styles.actionTextBox, USE_VERTICAL && styles.actionTextBoxVertical]}>
+                <Text style={[styles.actionTitle, USE_VERTICAL && styles.actionTitleVertical]} numberOfLines={1}>Library Tools</Text>
+                <Text style={[styles.actionDesc, USE_VERTICAL && styles.actionDescVertical]} numberOfLines={1}>Plans & metrics</Text>
               </View>
             </View>
           </ImageBackground>
@@ -353,6 +359,14 @@ const styles = StyleSheet.create({
     gap: 10,
     backgroundColor: 'rgba(6, 35, 22, 0.70)',
   },
+  actionOverlayVertical: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    gap: 8,
+  },
   actionIconBox: {
     width: 36,
     height: 36,
@@ -362,21 +376,35 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.25)',
     justifyContent: 'center',
     alignItems: 'center',
+    flexShrink: 0,
   },
   actionTextBox: {
     flex: 1,
     justifyContent: 'center',
+  },
+  actionTextBoxVertical: {
+    flex: 0,
+    width: '100%',
+    alignItems: 'center',
   },
   actionTitle: {
     fontSize: 13,
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  actionTitleVertical: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
   actionDesc: {
     fontSize: 10.5,
     color: '#FFFFFF',
     opacity: 0.85,
     marginTop: 2,
+  },
+  actionDescVertical: {
+    fontSize: 10,
+    textAlign: 'center',
   },
   recentMemberCard: {
     flexDirection: 'row',

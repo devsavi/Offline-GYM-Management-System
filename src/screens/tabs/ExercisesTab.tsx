@@ -380,27 +380,25 @@ export const ExercisesTab: React.FC = () => {
                   <ExerciseImage
                     exercise={item}
                     size={220}
-                    height={230}
+                    height={130}
                   />
                 </View>
 
-                {/* Card Details: Name, Category, and Description below */}
+                {/* Card Details: Name, Category badge, Description */}
                 <View style={styles.cardBottomSection}>
-                  <View style={styles.cardHeaderRow}>
-                    <Text style={styles.exerciseName} numberOfLines={2}>
-                      {item.name}
-                    </Text>
-                    <View style={styles.categoryTag}>
-                      <Text style={styles.categoryTagText}>{item.category}</Text>
-                    </View>
+                  <Text style={styles.exerciseName} numberOfLines={2}>
+                    {item.name}
+                  </Text>
+                  <View style={styles.categoryTag}>
+                    <Text style={styles.categoryTagText}>{item.category}</Text>
                   </View>
-
                   {item.description ? (
                     <Text style={styles.exerciseDesc} numberOfLines={3}>
                       {item.description}
                     </Text>
-                  ) : null}
-
+                  ) : (
+                    <Text style={styles.exerciseDescMuted}>No description available.</Text>
+                  )}
                   {item.is_custom && (
                     <View style={styles.customBadge}>
                       <Text style={styles.customBadgeText}>Added</Text>
@@ -773,7 +771,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   cardImageContainer: {
-    height: 210,
+    height: 130,
     backgroundColor: '#F8FAFC',
     justifyContent: 'center',
     alignItems: 'center',
@@ -783,6 +781,7 @@ const styles = StyleSheet.create({
   },
   cardBottomSection: {
     padding: 12,
+    gap: 4,
   },
   cardHeaderRow: {
     flexDirection: 'row',
@@ -792,17 +791,19 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   exerciseName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: colors.textPrimary,
-    flex: 1,
-    lineHeight: 18,
+    lineHeight: 17,
+    marginBottom: 4,
   },
   categoryTag: {
+    alignSelf: 'flex-start',
     backgroundColor: colors.sage,
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
+    marginBottom: 4,
   },
   categoryTagText: {
     fontSize: 10.5,
@@ -810,9 +811,14 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   exerciseDesc: {
-    fontSize: 11.5,
+    fontSize: 11,
     color: colors.textSecondary,
-    marginTop: 4,
+    lineHeight: 15,
+  },
+  exerciseDescMuted: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontStyle: 'italic',
     lineHeight: 15,
   },
   customBadge: {
@@ -821,7 +827,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 4,
-    marginTop: 6,
+    marginTop: 4,
   },
   customBadgeText: {
     fontSize: 10,

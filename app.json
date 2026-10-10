@@ -4,7 +4,11 @@
     "slug": "gripstate-gym-management",
     "version": "1.0.0",
     "orientation": "portrait",
+    "platforms": ["ios", "android", "web"],
     "userInterfaceStyle": "light",
+    "web": {
+      "bundler": "metro"
+    },
     "splash": {
       "resizeMode": "cover",
       "backgroundColor": "#0A3622"

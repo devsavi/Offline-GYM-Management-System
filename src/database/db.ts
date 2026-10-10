@@ -117,27 +117,20 @@ export async function initDatabase(): Promise<void> {
     } else {
       console.log(`[SQLite] Exercise dictionary already populated (${existing.count} exercises).`);
       
-      // Migrate old cardio exercises to new ones
+      // Migrate old cardio + chest exercises using manual transaction to avoid lock contention
       try {
-        console.log('[SQLite] Migrating cardio exercises to new set...');
+        console.log('[SQLite] Running exercise migrations...');
+
         await db.runAsync('PRAGMA foreign_keys = OFF;');
-        await db.withTransactionAsync(async () => {
-          // Delete old cardio exercises (only if they are not custom and have old IDs)
+        await db.runAsync('BEGIN TRANSACTION;');
+
+        try {
+          // --- Cardio migration ---
           const oldCardioIds = ['ex_cd_1', 'ex_cd_2', 'ex_cd_3', 'ex_cd_4'];
           for (const oldId of oldCardioIds) {
-            // First, remove any plan_exercises references
-            await db.runAsync(
-              'DELETE FROM plan_exercises WHERE exercise_id = ?;',
-              [oldId]
-            );
-            // Then delete the exercise itself
-            await db.runAsync(
-              'DELETE FROM exercises WHERE id = ? AND is_custom = 0;',
-              [oldId]
-            );
+            await db.runAsync('DELETE FROM plan_exercises WHERE exercise_id = ?;', [oldId]);
+            await db.runAsync('DELETE FROM exercises WHERE id = ? AND is_custom = 0;', [oldId]);
           }
-          
-          // Insert new cardio exercises
           const newCardioExercises = DEFAULT_EXERCISES.filter(ex => ex.category === 'Cardio');
           for (const ex of newCardioExercises) {
             await db.runAsync(
@@ -146,28 +139,13 @@ export async function initDatabase(): Promise<void> {
               [ex.id, ex.name, ex.category, ex.description || '', (ex as any).image_uri || null]
             );
           }
-        });
-        await db.runAsync('PRAGMA foreign_keys = ON;');
-        console.log('[SQLite] Cardio exercises migrated successfully.');
-      } catch (migrateErr) {
-        await db.runAsync('PRAGMA foreign_keys = ON;').catch(() => {});
-        console.warn('[SQLite] Cardio exercise migration warning:', migrateErr);
-      }
 
-      // Migrate old chest exercises to new ones
-      try {
-        console.log('[SQLite] Migrating chest exercises to new set...');
-        // Disable FK checks for this migration to avoid RESTRICT constraint
-        // firing before we can clean up plan_exercises references
-        await db.runAsync('PRAGMA foreign_keys = OFF;');
-        await db.withTransactionAsync(async () => {
-          // Remove old chest exercises (ex_ch_2 to ex_ch_5), keep ex_ch_1 (Barbell Bench Press)
+          // --- Chest migration ---
           const oldChestIds = ['ex_ch_2', 'ex_ch_3', 'ex_ch_4', 'ex_ch_5'];
           for (const oldId of oldChestIds) {
             await db.runAsync('DELETE FROM plan_exercises WHERE exercise_id = ?;', [oldId]);
             await db.runAsync('DELETE FROM exercises WHERE id = ? AND is_custom = 0;', [oldId]);
           }
-          // Insert all current chest exercises (includes new ex_ch_2 through ex_ch_6)
           const newChestExercises = DEFAULT_EXERCISES.filter(ex => ex.category === 'Chest');
           for (const ex of newChestExercises) {
             await db.runAsync(
@@ -176,13 +154,20 @@ export async function initDatabase(): Promise<void> {
               [ex.id, ex.name, ex.category, ex.description || '', (ex as any).image_uri || null]
             );
           }
-        });
+
+          await db.runAsync('COMMIT;');
+        } catch (innerErr) {
+          await db.runAsync('ROLLBACK;').catch(() => {});
+          throw innerErr;
+        }
+
         await db.runAsync('PRAGMA foreign_keys = ON;');
-        console.log('[SQLite] Chest exercises migrated successfully.');
+        console.log('[SQLite] Exercise migrations completed successfully.');
       } catch (migrateErr) {
         await db.runAsync('PRAGMA foreign_keys = ON;').catch(() => {});
-        console.warn('[SQLite] Chest exercise migration warning:', migrateErr);
-      }    }
+        console.warn('[SQLite] Exercise migration warning:', migrateErr);
+      }
+    } // end else (exercises already populated)
   } catch (seedErr) {
     console.error('[SQLite] Exercise seeding warning:', seedErr);
   }
