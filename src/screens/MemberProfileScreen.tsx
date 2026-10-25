@@ -768,18 +768,30 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
-  const handleSyncCalendar = async (plan: WorkoutPlan) => {
+  const handleSyncCalendar = (plan: WorkoutPlan) => {
     if (!member) return;
-    try {
-      const eventId = await addWorkoutPlanToCalendar(member.name, plan);
-      if (eventId) {
-        showAlert('Calendar Synced 📅', `Workout schedule added to device calendar with reminders.`);
-      } else {
-        showAlert('Calendar Notice', 'Calendar permissions are required or calendar could not be accessed.');
-      }
-    } catch (e: any) {
-      showAlert('Calendar Error', e.message);
-    }
+    showAlert(
+      'Sync to Calendar 📅',
+      `Would you like to sync "${plan.title}" to your device calendar with scheduled workout reminders for ${member.name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sync Schedule',
+          onPress: async () => {
+            try {
+              const eventId = await addWorkoutPlanToCalendar(member.name, plan);
+              if (eventId) {
+                showAlert('Calendar Synced 📅', 'Workout schedule added to device calendar with reminders.');
+              } else {
+                showAlert('Calendar Notice', 'Calendar permissions are required or calendar could not be accessed.');
+              }
+            } catch (e: any) {
+              showAlert('Calendar Error', e.message);
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (loading || !member) {
@@ -1763,29 +1775,36 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
                             </Text>
                           </View>
 
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View style={styles.planHeaderIconBtns}>
                             <TouchableOpacity
-                              style={styles.smallEditBtn}
-                              onPress={() => navigation.navigate('PlanBuilder', { memberId, planId: pastPlan.id })}
+                              style={styles.planIconBtn}
+                              onPress={(e) => {
+                                e?.stopPropagation?.();
+                                navigation.navigate('PlanBuilder', { memberId, planId: pastPlan.id });
+                              }}
                               activeOpacity={0.8}
+                              accessibilityLabel="Edit Routine"
                             >
-                              <Ionicons name="create-outline" size={14} color={colors.primary} />
-                              <Text style={styles.smallEditBtnText}>Edit</Text>
+                              <Ionicons name="pencil-outline" size={17} color="#FFFFFF" />
                             </TouchableOpacity>
 
                             <TouchableOpacity
-                              style={styles.smallPdfBtn}
-                              onPress={() => handleOpenShareMenu(pastPlan)}
+                              style={styles.planIconBtn}
+                              onPress={(e) => {
+                                e?.stopPropagation?.();
+                                handleOpenShareMenu(pastPlan);
+                              }}
                               activeOpacity={0.8}
+                              accessibilityLabel="Share Routine"
                             >
-                              <Ionicons name="share-social-outline" size={14} color={colors.primary} />
-                              <Text style={styles.smallPdfBtnText}>Share</Text>
+                              <Ionicons name="share-social-outline" size={17} color="#FFFFFF" />
                             </TouchableOpacity>
 
                             <Ionicons
                               name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                              size={18}
+                              size={20}
                               color={colors.textMuted}
+                              style={{ marginLeft: 4, alignSelf: 'center' }}
                             />
                           </View>
                         </TouchableOpacity>

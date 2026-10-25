@@ -201,6 +201,22 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const handleSelectExercise = (exercise: Exercise) => {
     const targetDay = routineType === 'multi' ? activeDay : 'Day 1';
+
+    const isAlreadyAdded = selectedExercises.some(
+      (e) =>
+        (e.day_of_week || 'Day 1').trim().toLowerCase() === targetDay.trim().toLowerCase() &&
+        (e.exercise_id === exercise.id ||
+          e.exercise_name.trim().toLowerCase() === exercise.name.trim().toLowerCase())
+    );
+
+    if (isAlreadyAdded) {
+      showAlert(
+        'Exercise Already Added',
+        `"${exercise.name}" is already included in ${targetDay}. Each exercise can only be added once per day.`
+      );
+      return;
+    }
+
     const newItem: Omit<PlanExerciseItem, 'id' | 'workout_plan_id'> = {
       exercise_id: exercise.id,
       exercise_name: exercise.name,
@@ -238,7 +254,37 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
   const handleAddAllSelected = () => {
     const toAdd = allExercises.filter((ex) => multiSelectedIds.includes(ex.id));
     const targetDay = routineType === 'multi' ? activeDay : 'Day 1';
-    const newItems: Omit<PlanExerciseItem, 'id' | 'workout_plan_id'>[] = toAdd.map((exercise, idx) => ({
+
+    const existingNamesOrIds = new Set(
+      selectedExercises
+        .filter((e) => (e.day_of_week || 'Day 1').trim().toLowerCase() === targetDay.trim().toLowerCase())
+        .flatMap((e) => [e.exercise_id, e.exercise_name.trim().toLowerCase()])
+    );
+
+    const duplicates: string[] = [];
+    const toAddFiltered: Exercise[] = [];
+
+    for (const ex of toAdd) {
+      if (existingNamesOrIds.has(ex.id) || existingNamesOrIds.has(ex.name.trim().toLowerCase())) {
+        duplicates.push(ex.name);
+      } else {
+        toAddFiltered.push(ex);
+        existingNamesOrIds.add(ex.id);
+        existingNamesOrIds.add(ex.name.trim().toLowerCase());
+      }
+    }
+
+    if (toAddFiltered.length === 0) {
+      showAlert(
+        'Already Added',
+        duplicates.length === 1
+          ? `"${duplicates[0]}" is already included in ${targetDay}.`
+          : `All selected exercises are already included in ${targetDay}.`
+      );
+      return;
+    }
+
+    const newItems: Omit<PlanExerciseItem, 'id' | 'workout_plan_id'>[] = toAddFiltered.map((exercise, idx) => ({
       exercise_id: exercise.id,
       exercise_name: exercise.name,
       category: exercise.category,
@@ -253,6 +299,13 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
     setSelectedExercises((prev) => [...prev, ...newItems]);
     exitMultiSelect();
     setShowExerciseModal(false);
+
+    if (duplicates.length > 0) {
+      showAlert(
+        'Duplicate Exercises Skipped',
+        `${duplicates.join(', ')} already existed in ${targetDay} and ${duplicates.length > 1 ? 'were' : 'was'} not added again.`
+      );
+    }
   };
 
   // Day management helpers
@@ -274,6 +327,26 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   const handleChangeExerciseDay = (originalIndex: number, targetDay: string) => {
+    const itemToChange = selectedExercises[originalIndex];
+    if (!itemToChange) return;
+    if ((itemToChange.day_of_week || 'Day 1') === targetDay) return;
+
+    const alreadyInTargetDay = selectedExercises.some(
+      (e, idx) =>
+        idx !== originalIndex &&
+        (e.day_of_week || 'Day 1').trim().toLowerCase() === targetDay.trim().toLowerCase() &&
+        (e.exercise_id === itemToChange.exercise_id ||
+          e.exercise_name.trim().toLowerCase() === itemToChange.exercise_name.trim().toLowerCase())
+    );
+
+    if (alreadyInTargetDay) {
+      showAlert(
+        'Already Exists',
+        `"${itemToChange.exercise_name}" is already scheduled in ${targetDay}. Each exercise can only be added once per day.`
+      );
+      return;
+    }
+
     setSelectedExercises((prev) => {
       const updated = [...prev];
       if (updated[originalIndex]) {
@@ -508,6 +581,19 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
   const handleCreateAndAddCustomExercise = async () => {
     if (!customName.trim()) {
       showAlert('Required', 'Please enter exercise name.');
+      return;
+    }
+    const targetDay = routineType === 'multi' ? activeDay : 'Day 1';
+    const isAlreadyAdded = selectedExercises.some(
+      (e) =>
+        (e.day_of_week || 'Day 1').trim().toLowerCase() === targetDay.trim().toLowerCase() &&
+        e.exercise_name.trim().toLowerCase() === customName.trim().toLowerCase()
+    );
+    if (isAlreadyAdded) {
+      showAlert(
+        'Exercise Already Added',
+        `An exercise named "${customName.trim()}" is already scheduled in ${targetDay}.`
+      );
       return;
     }
     setIsSubmitting(true);
@@ -1259,6 +1345,12 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
                   renderItem={({ item: ex }: { item: Exercise }) => {
+                    const targetDay = routineType === 'multi' ? activeDay : 'Day 1';
+                    const isAlreadyInDay = selectedExercises.some(
+                      (e) =>
+                        (e.day_of_week || 'Day 1').trim().toLowerCase() === targetDay.trim().toLowerCase() &&
+                        (e.exercise_id === ex.id || e.exercise_name.trim().toLowerCase() === ex.name.trim().toLowerCase())
+                    );
                     const isSelected = multiSelectedIds.includes(ex.id);
                     return (
                       <TouchableOpacity
@@ -1268,12 +1360,23 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
                         ]}
                         onPress={() => {
                           if (isMultiSelectMode) {
+                            if (isAlreadyInDay) {
+                              showAlert(
+                                'Already Added',
+                                `"${ex.name}" is already included in ${targetDay}.`
+                              );
+                              return;
+                            }
                             handleMultiSelectToggle(ex.id);
                           } else {
                             handleSelectExercise(ex);
                           }
                         }}
-                        onLongPress={() => handleExerciseLongPress(ex.id)}
+                        onLongPress={() => {
+                          if (!isAlreadyInDay) {
+                            handleExerciseLongPress(ex.id);
+                          }
+                        }}
                         delayLongPress={300}
                         activeOpacity={0.8}
                       >
@@ -1289,9 +1392,19 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
                               style={[
                                 styles.cardSelectBadge,
                                 isSelected && styles.cardSelectBadgeActive,
+                                isAlreadyInDay && { backgroundColor: '#E2E8F0', borderColor: '#CBD5E1' },
                               ]}
                             >
-                              {isSelected && <Ionicons name="checkmark" size={13} color="#FFFFFF" />}
+                              {isAlreadyInDay ? (
+                                <Ionicons name="checkmark-done" size={13} color="#64748B" />
+                              ) : isSelected ? (
+                                <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                              ) : null}
+                            </View>
+                          ) : isAlreadyInDay ? (
+                            <View style={styles.cardAddedPill}>
+                              <Ionicons name="checkmark-circle" size={12} color="#A7F3D0" />
+                              <Text style={styles.cardAddedPillText}>In {targetDay}</Text>
                             </View>
                           ) : (
                             <View style={styles.cardAddPill}>
@@ -2020,6 +2133,24 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '700',
+  },
+  cardAddedPill: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0A3622',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+    gap: 3,
+  },
+  cardAddedPillText: {
+    color: '#A7F3D0',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   cardSelectBadge: {
     position: 'absolute',
