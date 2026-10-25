@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
+  Linking,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -125,10 +126,18 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [activePlan, setActivePlan] = useState<WorkoutPlan | null>(null);
   const [historicalPlans, setHistoricalPlans] = useState<WorkoutPlan[]>([]);
+  const [activeRoutineDayFilter, setActiveRoutineDayFilter] = useState<string>('ALL');
+  const [expandedPastPlanId, setExpandedPastPlanId] = useState<string | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [customFields, setCustomFields] = useState<CustomMeasurementField[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Share Routine Modal State
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [selectedPlanToShare, setSelectedPlanToShare] = useState<WorkoutPlan | null>(null);
+  const [shareStep, setShareStep] = useState<'options' | 'social'>('options');
+  const [copiedFeedback, setCopiedFeedback] = useState(false);
 
   // Unit Preferences State (custom select units for progress view)
   const [measUnitWeight, setMeasUnitWeight] = useState<'kg' | 'lbs'>('kg');
@@ -620,6 +629,135 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
 
+
+  const handleOpenShareMenu = (plan: WorkoutPlan) => {
+    setSelectedPlanToShare(plan);
+    setShareStep('options');
+    setCopiedFeedback(false);
+    setShowShareModal(true);
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!selectedPlanToShare || !member) return;
+    setShowShareModal(false);
+    try {
+      await exportWorkoutPlanPDF(member, selectedPlanToShare, selectedLocation?.name || 'GripState');
+    } catch (e: any) {
+      showAlert('PDF Export Error', e.message);
+    }
+  };
+
+  const getShareText = () => {
+    if (!selectedPlanToShare) return '';
+    const plan = selectedPlanToShare;
+    const exercisesList = plan.exercises || [];
+    const gymName = selectedLocation?.name || 'GripState Gym';
+
+    let text = `🏋️ *${(plan.title || 'WORKOUT ROUTINE').toUpperCase()}*\n`;
+    if (member?.name) text += `👤 Member: ${member.name}\n`;
+    if (plan.start_date || plan.end_date) {
+      text += `📅 Duration: ${plan.start_date || 'Today'} → ${plan.end_date || 'Ongoing'}\n`;
+    }
+    if (plan.notes) {
+      text += `📝 Note: ${plan.notes}\n`;
+    }
+    text += `\n📋 *EXERCISES ROUTINE*\n`;
+
+    const uniqueDays = Array.from(new Set(exercisesList.map((e) => e.day_of_week || 'Day 1')));
+    if (uniqueDays.length > 1) {
+      uniqueDays.forEach((day) => {
+        text += `\n━━━ 📌 ${day.toUpperCase()} ━━━\n`;
+        const dayExs = exercisesList.filter((e) => (e.day_of_week || 'Day 1') === day);
+        dayExs.forEach((ex, idx) => {
+          text += `${idx + 1}. *${ex.exercise_name}* (${ex.category})\n`;
+          text += `   Sets: ${ex.sets} × Reps: ${ex.reps} | Rest: ${ex.rest_time}s\n`;
+        });
+      });
+    } else {
+      exercisesList.forEach((ex, idx) => {
+        text += `${idx + 1}. *${ex.exercise_name}* (${ex.category})\n`;
+        text += `   Sets: ${ex.sets} × Reps: ${ex.reps} | Rest: ${ex.rest_time}s\n`;
+      });
+    }
+
+    text += `\n💪 Managed via ${gymName}`;
+    return text;
+  };
+
+  const handleShareToWhatsApp = () => {
+    const text = getShareText();
+    const phone = (member?.phone || '').replace(/[^0-9]/g, '');
+    const url = phone
+      ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
+      : `https://wa.me/?text=${encodeURIComponent(text)}`;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.open(url, '_blank');
+    } else {
+      Linking.openURL(url);
+    }
+    setShowShareModal(false);
+  };
+
+  const handleShareToTelegram = () => {
+    const text = getShareText();
+    const url = `https://t.me/share/url?url=${encodeURIComponent('https://gripstate.app')}&text=${encodeURIComponent(text)}`;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.open(url, '_blank');
+    } else {
+      Linking.openURL(url);
+    }
+    setShowShareModal(false);
+  };
+
+  const handleShareViaEmail = () => {
+    const text = getShareText();
+    const email = member?.email || '';
+    const subject = encodeURIComponent(`${selectedPlanToShare?.title || 'Workout Routine'} - ${member?.name || ''}`);
+    const url = `mailto:${email}?subject=${subject}&body=${encodeURIComponent(text)}`;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.open(url, '_blank');
+    } else {
+      Linking.openURL(url);
+    }
+    setShowShareModal(false);
+  };
+
+  const handleCopyShareText = async () => {
+    const text = getShareText();
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+      } else if (typeof document !== 'undefined') {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopiedFeedback(true);
+      setTimeout(() => setCopiedFeedback(false), 2500);
+    } catch (err) {
+      showAlert('Copy', 'Could not copy to clipboard.');
+    }
+  };
+
+  const handleNativeShare = async () => {
+    const text = getShareText();
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: `${selectedPlanToShare?.title || 'Workout Routine'} - ${member?.name || ''}`,
+          text,
+        });
+        setShowShareModal(false);
+      } catch (err) {
+        // cancelled
+      }
+    } else {
+      handleCopyShareText();
+    }
+  };
 
   const handleExportPDF = async (plan: WorkoutPlan) => {
     if (!member) return;
@@ -1380,76 +1518,205 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
               </View>
 
               {/* Currently Active Routine */}
-              {activePlan ? (
-                <View style={styles.flatPlanBlock}>
-                  <View style={styles.planHeaderRow}>
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.activeRoutinePill}>
-                        <Text style={styles.activeRoutinePillText}>ACTIVE WORKOUT</Text>
+              {activePlan ? (() => {
+                const exercises = activePlan.exercises || [];
+                // Collect unique days
+                const uniqueDays = Array.from(
+                  new Set(
+                    exercises.map((e) =>
+                      e.day_of_week && e.day_of_week.trim() ? e.day_of_week.trim() : 'Day 1'
+                    )
+                  )
+                );
+                const isMultiDay = uniqueDays.length > 1;
+
+                return (
+                  <View style={styles.flatPlanBlock}>
+                    <View style={styles.planHeaderRow}>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <View style={styles.activeRoutinePill}>
+                            <Text style={styles.activeRoutinePillText}>ACTIVE WORKOUT</Text>
+                          </View>
+                          {isMultiDay && (
+                            <View style={styles.multiDayIndicatorPill}>
+                              <Ionicons name="calendar-outline" size={11} color="#0284C7" />
+                              <Text style={styles.multiDayIndicatorText}>{uniqueDays.length}-Day Split</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.planTitle}>{activePlan.title}</Text>
+                        <Text style={styles.planDates}>
+                          {activePlan.start_date} → {activePlan.end_date} • {exercises.length} Exercises Total
+                        </Text>
                       </View>
-                      <Text style={styles.planTitle}>{activePlan.title}</Text>
-                      <Text style={styles.planDates}>
-                        {activePlan.start_date} → {activePlan.end_date}
-                      </Text>
+
+                      {/* Icon-only action buttons in header top-right */}
+                      <View style={styles.planHeaderIconBtns}>
+                        <TouchableOpacity
+                          style={styles.planIconBtn}
+                          onPress={() => navigation.navigate('PlanBuilder', { memberId, planId: activePlan.id })}
+                          activeOpacity={0.8}
+                          accessibilityLabel="Edit Routine"
+                        >
+                          <Ionicons name="pencil-outline" size={17} color="#FFFFFF" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.planIconBtn}
+                          onPress={() => handleOpenShareMenu(activePlan)}
+                          activeOpacity={0.8}
+                          accessibilityLabel="Share Routine"
+                        >
+                          <Ionicons name="share-social-outline" size={17} color="#FFFFFF" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.planIconBtn}
+                          onPress={() => handleSyncCalendar(activePlan)}
+                          activeOpacity={0.8}
+                          accessibilityLabel="Sync Calendar"
+                        >
+                          <Ionicons name="calendar-outline" size={17} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                  </View>
 
-                  {activePlan.notes ? (
-                    <Text style={styles.planNotesText}>Note: {activePlan.notes}</Text>
-                  ) : null}
+                    {activePlan.notes ? (
+                      <Text style={styles.planNotesText}>Note: {activePlan.notes}</Text>
+                    ) : null}
 
-                  {/* Exercises list */}
-                  <View style={styles.exerciseList}>
-                    {(activePlan.exercises || []).map((ex, idx) => (
-                      <View key={ex.id} style={styles.exerciseItemRow}>
-                        <View style={styles.exerciseNum}>
-                          <Text style={styles.exerciseNumText}>{idx + 1}</Text>
-                        </View>
-                        <View style={styles.exerciseItemThumbWrap}>
-                          <ExerciseImage
-                            exercise={{
-                              id: ex.exercise_id,
-                              name: ex.exercise_name,
-                              category: ex.category,
-                              image_uri: ex.image_uri,
-                            }}
-                            size={38}
-                            height={38}
-                          />
-                        </View>
-                        <View style={{ flex: 1, marginLeft: 10 }}>
-                          <Text style={styles.exerciseItemName}>{ex.exercise_name}</Text>
-                          <Text style={styles.exerciseItemMeta}>
-                            {ex.category} • {ex.sets} sets × {ex.reps} reps • Rest: {ex.rest_time}s
-                            {ex.target_weight ? ` • ${ex.target_weight}` : ''}
-                          </Text>
-                        </View>
+                    {/* Multi-Day Filter Tabs */}
+                    {isMultiDay && (
+                      <View style={styles.viewDaysFilterWrap}>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.viewDaysFilterRow}>
+                          <TouchableOpacity
+                            style={[
+                              styles.viewDayTabPill,
+                              activeRoutineDayFilter === 'ALL' && styles.viewDayTabPillActive,
+                            ]}
+                            onPress={() => setActiveRoutineDayFilter('ALL')}
+                            activeOpacity={0.8}
+                          >
+                            <Text
+                              style={[
+                                styles.viewDayTabPillText,
+                                activeRoutineDayFilter === 'ALL' && styles.viewDayTabPillTextActive,
+                              ]}
+                            >
+                              All Days ({exercises.length})
+                            </Text>
+                          </TouchableOpacity>
+
+                          {uniqueDays.map((day) => {
+                            const count = exercises.filter((e) => (e.day_of_week || 'Day 1') === day).length;
+                            const isActive = activeRoutineDayFilter === day;
+                            return (
+                              <TouchableOpacity
+                                key={day}
+                                style={[styles.viewDayTabPill, isActive && styles.viewDayTabPillActive]}
+                                onPress={() => setActiveRoutineDayFilter(day)}
+                                activeOpacity={0.8}
+                              >
+                                <Text
+                                  style={[
+                                    styles.viewDayTabPillText,
+                                    isActive && styles.viewDayTabPillTextActive,
+                                  ]}
+                                >
+                                  {day} ({count})
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
                       </View>
-                    ))}
-                  </View>
+                    )}
 
-                  {/* Actions */}
-                  <View style={styles.planActionRow}>
-                    <TouchableOpacity
-                      style={styles.pdfExportBtn}
-                      onPress={() => handleExportPDF(activePlan)}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="share-outline" size={18} color="#FFFFFF" />
-                      <Text style={styles.pdfExportBtnText}>Share / Print PDF</Text>
-                    </TouchableOpacity>
+                    {/* Day-wise Exercises Display */}
+                    {isMultiDay ? (
+                      <View style={{ marginTop: 12 }}>
+                        {(activeRoutineDayFilter === 'ALL' ? uniqueDays : [activeRoutineDayFilter]).map((day) => {
+                          const dayExercises = exercises.filter((e) => (e.day_of_week || 'Day 1') === day);
+                          return (
+                            <View key={day} style={styles.dayGroupContainer}>
+                              <View style={styles.dayGroupHeader}>
+                                <View style={styles.dayGroupHeaderLeft}>
+                                  <Ionicons name="calendar" size={14} color="#0A3622" />
+                                  <Text style={styles.dayGroupTitle}>{day.toUpperCase()}</Text>
+                                </View>
+                                <View style={styles.dayGroupBadge}>
+                                  <Text style={styles.dayGroupBadgeText}>{dayExercises.length} {dayExercises.length === 1 ? 'Exercise' : 'Exercises'}</Text>
+                                </View>
+                              </View>
 
-                    <TouchableOpacity
-                      style={styles.calendarSyncBtn}
-                      onPress={() => handleSyncCalendar(activePlan)}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="calendar-outline" size={18} color={colors.primary} />
-                      <Text style={styles.calendarSyncBtnText}>Add Calendar</Text>
-                    </TouchableOpacity>
+                              {dayExercises.length === 0 ? (
+                                <Text style={styles.noDayExercisesText}>No movements scheduled for {day}</Text>
+                              ) : (
+                                dayExercises.map((ex, idx) => (
+                                  <View key={ex.id} style={styles.exerciseItemRow}>
+                                    <View style={styles.exerciseNum}>
+                                      <Text style={styles.exerciseNumText}>{idx + 1}</Text>
+                                    </View>
+                                    <View style={styles.exerciseItemThumbWrap}>
+                                      <ExerciseImage
+                                        exercise={{
+                                          id: ex.exercise_id,
+                                          name: ex.exercise_name,
+                                          category: ex.category,
+                                          image_uri: ex.image_uri,
+                                        }}
+                                        size={38}
+                                        height={38}
+                                      />
+                                    </View>
+                                    <View style={{ flex: 1, marginLeft: 10 }}>
+                                      <Text style={styles.exerciseItemName}>{ex.exercise_name}</Text>
+                                      <Text style={styles.exerciseItemMeta}>
+                                        {ex.category} • {ex.sets} sets × {ex.reps} reps • Rest: {ex.rest_time}s
+                                      </Text>
+                                    </View>
+                                  </View>
+                                ))
+                              )}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    ) : (
+                      /* Single Day flat exercise list */
+                      <View style={styles.exerciseList}>
+                        {exercises.map((ex, idx) => (
+                          <View key={ex.id} style={styles.exerciseItemRow}>
+                            <View style={styles.exerciseNum}>
+                              <Text style={styles.exerciseNumText}>{idx + 1}</Text>
+                            </View>
+                            <View style={styles.exerciseItemThumbWrap}>
+                              <ExerciseImage
+                                exercise={{
+                                  id: ex.exercise_id,
+                                  name: ex.exercise_name,
+                                  category: ex.category,
+                                  image_uri: ex.image_uri,
+                                }}
+                                size={38}
+                                height={38}
+                              />
+                            </View>
+                            <View style={{ flex: 1, marginLeft: 10 }}>
+                              <Text style={styles.exerciseItemName}>{ex.exercise_name}</Text>
+                              <Text style={styles.exerciseItemMeta}>
+                                {ex.category} • {ex.sets} sets × {ex.reps} reps • Rest: {ex.rest_time}s
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
                   </View>
-                </View>
-              ) : (
+                );
+              })() : (
                 <View style={styles.emptyCard}>
                   <Ionicons name="barbell-outline" size={40} color={colors.textMuted} />
                   <Text style={styles.emptyTitle}>No active workout plan</Text>
@@ -1463,22 +1730,93 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
               {historicalPlans.length > 0 && (
                 <View style={{ marginTop: 24 }}>
                   <Text style={styles.sectionHeading}>Expired / Past Plans ({historicalPlans.length})</Text>
-                  {historicalPlans.map((pastPlan) => (
-                    <View key={pastPlan.id} style={styles.flatPastPlanRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.pastPlanTitle}>{pastPlan.title}</Text>
-                        <Text style={styles.planDates}>Ended: {pastPlan.end_date}</Text>
+                  {historicalPlans.map((pastPlan) => {
+                    const isExpanded = expandedPastPlanId === pastPlan.id;
+                    const pastExercises = pastPlan.exercises || [];
+                    const pastDays = Array.from(
+                      new Set(
+                        pastExercises.map((e) =>
+                          e.day_of_week && e.day_of_week.trim() ? e.day_of_week.trim() : 'Day 1'
+                        )
+                      )
+                    );
+                    const isPastMultiDay = pastDays.length > 1;
+
+                    return (
+                      <View key={pastPlan.id} style={styles.flatPastPlanCard}>
+                        <TouchableOpacity
+                          style={styles.flatPastPlanHeader}
+                          onPress={() => setExpandedPastPlanId(isExpanded ? null : pastPlan.id)}
+                          activeOpacity={0.8}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                              <Text style={styles.pastPlanTitle}>{pastPlan.title}</Text>
+                              {isPastMultiDay && (
+                                <View style={styles.pastDayCountBadge}>
+                                  <Text style={styles.pastDayCountText}>{pastDays.length} Days</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={styles.planDates}>
+                              Ended: {pastPlan.end_date} • {pastExercises.length} Exercises
+                            </Text>
+                          </View>
+
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <TouchableOpacity
+                              style={styles.smallEditBtn}
+                              onPress={() => navigation.navigate('PlanBuilder', { memberId, planId: pastPlan.id })}
+                              activeOpacity={0.8}
+                            >
+                              <Ionicons name="create-outline" size={14} color={colors.primary} />
+                              <Text style={styles.smallEditBtnText}>Edit</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={styles.smallPdfBtn}
+                              onPress={() => handleOpenShareMenu(pastPlan)}
+                              activeOpacity={0.8}
+                            >
+                              <Ionicons name="share-social-outline" size={14} color={colors.primary} />
+                              <Text style={styles.smallPdfBtnText}>Share</Text>
+                            </TouchableOpacity>
+
+                            <Ionicons
+                              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                              size={18}
+                              color={colors.textMuted}
+                            />
+                          </View>
+                        </TouchableOpacity>
+
+                        {/* Collapsible Day-wise Details */}
+                        {isExpanded && (
+                          <View style={styles.pastPlanExpandedBody}>
+                            {pastDays.map((day) => {
+                              const dExs = pastExercises.filter((e) => (e.day_of_week || 'Day 1') === day);
+                              return (
+                                <View key={day} style={{ marginBottom: 10 }}>
+                                  <View style={styles.pastDaySectionHeader}>
+                                    <Text style={styles.pastDaySectionTitle}>{day}</Text>
+                                    <Text style={styles.pastDaySectionCount}>{dExs.length} exercises</Text>
+                                  </View>
+                                  {dExs.map((ex, idx) => (
+                                    <View key={ex.id} style={styles.pastExRow}>
+                                      <Text style={styles.pastExNum}>{idx + 1}.</Text>
+                                      <Text style={styles.pastExName}>{ex.exercise_name}</Text>
+                                      <Text style={styles.pastExCategory}>({ex.category})</Text>
+                                      <Text style={styles.pastExMeta}>{ex.sets} × {ex.reps}</Text>
+                                    </View>
+                                  ))}
+                                </View>
+                              );
+                            })}
+                          </View>
+                        )}
                       </View>
-                      <TouchableOpacity
-                        style={styles.smallPdfBtn}
-                        onPress={() => handleExportPDF(pastPlan)}
-                        activeOpacity={0.8}
-                      >
-                        <Ionicons name="document-text-outline" size={15} color={colors.primary} />
-                        <Text style={styles.smallPdfBtnText}>PDF</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               )}
             </View>
@@ -2304,6 +2642,201 @@ export const MemberProfileScreen: React.FC<Props> = ({ route, navigation }) => {
                 <Text style={styles.modalCancelBtnText}>Cancel</Text>
               </TouchableOpacity>
             </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── MODAL: Workout Routine Share & Download ── */}
+      <Modal visible={showShareModal} animationType="fade" transparent onRequestClose={() => setShowShareModal(false)}>
+        <KeyboardAvoidingView behavior="padding" style={styles.modalBackdrop}>
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowShareModal(false)}
+          />
+          <View style={[styles.modalBox, { maxHeight: '85%' }]}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              {shareStep === 'social' ? (
+                <TouchableOpacity
+                  style={styles.modalBackStepBtn}
+                  onPress={() => setShareStep('options')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
+                  <Text style={styles.modalBackStepBtnText}>Back</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={styles.modalTitle}>Workout Routine</Text>
+                  <Text style={styles.modalSubtitle} numberOfLines={1}>
+                    {selectedPlanToShare?.title} • {member?.name}
+                  </Text>
+                </View>
+              )}
+              <TouchableOpacity onPress={() => setShowShareModal(false)} activeOpacity={0.8} style={{ padding: 4 }}>
+                <Ionicons name="close" size={22} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            {shareStep === 'options' ? (
+              /* STEP 1: Two primary choices (Download PDF or Share) */
+              <View style={styles.shareOptionsContainer}>
+                <Text style={styles.shareChoosePrompt}>Choose an action for this workout routine:</Text>
+
+                {/* Option 1: Download PDF */}
+                <TouchableOpacity
+                  style={styles.shareOptionCard}
+                  onPress={handleDownloadPdf}
+                  activeOpacity={0.85}
+                >
+                  <View style={[styles.shareOptionIconWrap, { backgroundColor: '#E6F4EA' }]}>
+                    <Ionicons name="document-text-outline" size={24} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.shareOptionCardTitle}>Download / Print PDF</Text>
+                    <Text style={styles.shareOptionCardDesc}>
+                      Generate and save clean, high-resolution PDF routine sheets with exercise illustrations
+                    </Text>
+                  </View>
+                  <Ionicons name="download-outline" size={20} color={colors.primary} />
+                </TouchableOpacity>
+
+                {/* Option 2: Share via Social / Messaging */}
+                <TouchableOpacity
+                  style={styles.shareOptionCard}
+                  onPress={() => setShareStep('social')}
+                  activeOpacity={0.85}
+                >
+                  <View style={[styles.shareOptionIconWrap, { backgroundColor: '#E0F2FE' }]}>
+                    <Ionicons name="share-social-outline" size={24} color="#0284C7" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.shareOptionCardTitle}>Share Routine</Text>
+                    <Text style={styles.shareOptionCardDesc}>
+                      Send formatted routine breakdown via WhatsApp, Telegram, Email, and other apps
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              /* STEP 2: Social Media & Messaging Options */
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 16 }}>
+                <View style={styles.shareRecipientBanner}>
+                  <View style={styles.shareRecipientAvatar}>
+                    <Text style={styles.shareRecipientAvatarText}>
+                      {(member?.name || 'M').charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.shareRecipientTitle} numberOfLines={1}>{selectedPlanToShare?.title}</Text>
+                    <Text style={styles.shareRecipientSubtitle}>
+                      Recipient: {member?.name} {member?.phone ? `• ${member.phone}` : ''}
+                    </Text>
+                  </View>
+                </View>
+
+                {copiedFeedback && (
+                  <View style={styles.copiedBanner}>
+                    <Ionicons name="checkmark-circle" size={16} color="#0F5132" />
+                    <Text style={styles.copiedBannerText}>Workout routine copied to clipboard!</Text>
+                  </View>
+                )}
+
+                <Text style={styles.shareSectionLabel}>SELECT SHARING METHOD</Text>
+
+                <View style={styles.socialGrid}>
+                  {/* WhatsApp */}
+                  <TouchableOpacity
+                    style={styles.socialActionRow}
+                    onPress={handleShareToWhatsApp}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.socialIconBadge, { backgroundColor: '#25D366' }]}>
+                      <Ionicons name="logo-whatsapp" size={20} color="#FFFFFF" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.socialActionTitle}>WhatsApp</Text>
+                      <Text style={styles.socialActionSubtitle}>
+                        {member?.phone ? `Send to ${member.phone}` : 'Open WhatsApp chat'}
+                      </Text>
+                    </View>
+                    <Ionicons name="open-outline" size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+
+                  {/* Telegram */}
+                  <TouchableOpacity
+                    style={styles.socialActionRow}
+                    onPress={handleShareToTelegram}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.socialIconBadge, { backgroundColor: '#229ED9' }]}>
+                      <Ionicons name="paper-plane" size={18} color="#FFFFFF" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.socialActionTitle}>Telegram</Text>
+                      <Text style={styles.socialActionSubtitle}>Share to Telegram contacts</Text>
+                    </View>
+                    <Ionicons name="open-outline" size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+
+                  {/* Email */}
+                  <TouchableOpacity
+                    style={styles.socialActionRow}
+                    onPress={handleShareViaEmail}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.socialIconBadge, { backgroundColor: '#EA4335' }]}>
+                      <Ionicons name="mail" size={18} color="#FFFFFF" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.socialActionTitle}>Email</Text>
+                      <Text style={styles.socialActionSubtitle}>
+                        {member?.email ? `Send to ${member.email}` : 'Compose email'}
+                      </Text>
+                    </View>
+                    <Ionicons name="open-outline" size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+
+                  {/* Copy Text */}
+                  <TouchableOpacity
+                    style={styles.socialActionRow}
+                    onPress={handleCopyShareText}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.socialIconBadge, { backgroundColor: '#475569' }]}>
+                      <Ionicons name="copy-outline" size={18} color="#FFFFFF" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.socialActionTitle}>Copy Routine</Text>
+                      <Text style={styles.socialActionSubtitle}>Copy full workout text to clipboard</Text>
+                    </View>
+                    <Ionicons
+                      name={copiedFeedback ? 'checkmark' : 'copy'}
+                      size={18}
+                      color={copiedFeedback ? '#0F5132' : '#94A3B8'}
+                    />
+                  </TouchableOpacity>
+
+                  {/* System More Apps */}
+                  <TouchableOpacity
+                    style={styles.socialActionRow}
+                    onPress={handleNativeShare}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.socialIconBadge, { backgroundColor: colors.primary }]}>
+                      <Ionicons name="share-outline" size={18} color="#FFFFFF" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.socialActionTitle}>More Options...</Text>
+                      <Text style={styles.socialActionSubtitle}>Open device system sharing dialog</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -3299,6 +3832,22 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
   },
+  planHeaderIconBtns: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginLeft: 10,
+    paddingTop: 2,
+  },
+  planIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 0,
+  },
   pdfExportBtn: {
     flex: 1,
     backgroundColor: colors.primary,
@@ -3851,5 +4400,346 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: colors.textMuted,
+  },
+
+  // ── MULTI-DAY WORKOUT VIEW STYLES ──
+  multiDayIndicatorPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  multiDayIndicatorText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  viewDaysFilterWrap: {
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  viewDaysFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  viewDayTabPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  viewDayTabPillActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  viewDayTabPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  viewDayTabPillTextActive: {
+    color: '#FFFFFF',
+  },
+  dayGroupContainer: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 10,
+    marginBottom: 12,
+  },
+  dayGroupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 8,
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  dayGroupHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  dayGroupTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0A3622',
+    letterSpacing: 0.4,
+  },
+  dayGroupBadge: {
+    backgroundColor: '#E6F4EA',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  dayGroupBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  noDayExercisesText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+    padding: 10,
+    textAlign: 'center',
+  },
+  editRoutineBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 42,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+  },
+  editRoutineBtnText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  flatPastPlanCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 10,
+    overflow: 'hidden',
+  },
+  flatPastPlanHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+  },
+  pastDayCountBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  pastDayCountText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  smallEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: '#E6F4EA',
+  },
+  smallEditBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  pastPlanExpandedBody: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    backgroundColor: '#F8FAFC',
+  },
+  pastDaySectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 4,
+    paddingBottom: 2,
+  },
+  pastDaySectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#0A3622',
+  },
+  pastDaySectionCount: {
+    fontSize: 11,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  pastExRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    gap: 6,
+  },
+  pastExNum: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+    width: 18,
+  },
+  pastExName: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1E293B',
+    flex: 1,
+  },
+  pastExCategory: {
+    fontSize: 11,
+    color: '#64748B',
+  },
+  pastExMeta: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+
+  // ── Share & Download Routine Modal Styles ──
+  shareOptionsContainer: {
+    paddingVertical: 8,
+  },
+  shareChoosePrompt: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginBottom: 16,
+    fontWeight: '500',
+  },
+  shareOptionCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    marginBottom: 12,
+  },
+  shareOptionIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareOptionCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  shareOptionCardDesc: {
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 16,
+  },
+  modalBackStepBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  modalBackStepBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  shareRecipientBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+  },
+  shareRecipientAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  shareRecipientAvatarText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  shareRecipientTitle: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  shareRecipientSubtitle: {
+    fontSize: 11.5,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  copiedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#E6F4EA',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#A3D9A5',
+  },
+  copiedBannerText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#0F5132',
+  },
+  shareSectionLabel: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: colors.textMuted,
+    letterSpacing: 0.8,
+    marginBottom: 10,
+    marginTop: 4,
+  },
+  socialGrid: {
+    gap: 8,
+  },
+  socialActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  socialIconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  socialActionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  socialActionSubtitle: {
+    fontSize: 11.5,
+    color: colors.textMuted,
+    marginTop: 1,
   },
 });

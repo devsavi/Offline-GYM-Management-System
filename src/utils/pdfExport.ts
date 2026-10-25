@@ -1,182 +1,649 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { Member, WorkoutPlan } from '../types';
+import { Platform } from 'react-native';
+import { Member, WorkoutPlan, PlanExerciseItem } from '../types';
 
 /**
- * Generates an ultra-clean, modern, branded PDF for a Workout Plan and prompts the user to share or print it.
+ * All categories use the app's mint-green chip color (matching catPill in colors.ts)
+ */
+function getCategoryBadgeStyle(_category: string): { bg: string; text: string; border: string } {
+  return { bg: '#D1FAE5', text: '#0A3622', border: '#A7F3D0' };
+}
+
+/**
+ * Resolve a public-folder image URI to an absolute URL for use inside the iframe.
+ * On web, relative paths like "/exercises/chest/foo.webp" need the origin prepended.
+ */
+function resolveImageUrl(imageUri: string | undefined): string | null {
+  if (!imageUri) return null;
+  if (imageUri.startsWith('http://') || imageUri.startsWith('https://') || imageUri.startsWith('data:')) {
+    return imageUri;
+  }
+  // Relative path — prepend origin so the iframe can load it
+  if (typeof window !== 'undefined') {
+    return window.location.origin + (imageUri.startsWith('/') ? imageUri : '/' + imageUri);
+  }
+  return imageUri;
+}
+
+/**
+ * Generates a clean, professional exercise PDF in a Grid View.
+ * Top header:
+ *   - Left: App logo & Location
+ *   - Right: Member name
+ * Below header:
+ *   - Routine plan details & Day banner
+ *   - Exercises rendered in a clean grid view (no description, no application UI buttons)
+ * Multi-day routines are rendered day-wise across separate pages.
  */
 export async function exportWorkoutPlanPDF(
   member: Member,
   plan: WorkoutPlan,
   gymName: string = 'GripState Elite Training'
 ): Promise<void> {
-  const exercisesHtml = (plan.exercises || [])
-    .map(
-      (item, idx) => `
-      <tr style="border-bottom: 1px solid #E2E8F0; background: ${idx % 2 === 0 ? '#FFFFFF' : '#F9FBFA'};">
-        <td style="padding: 12px 14px; font-weight: 600; color: #0F172A;">
-          ${idx + 1}. ${item.exercise_name}
-          ${item.notes ? `<div style="font-size: 11px; color: #64748B; font-weight: 400; margin-top: 2px;">${item.notes}</div>` : ''}
-        </td>
-        <td style="padding: 12px 14px; color: #0A3622;">
-          <span style="background: #E6F4EA; color: #0A3622; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 600;">
-            ${item.category}
-          </span>
-        </td>
-        <td style="padding: 12px 14px; text-align: center; font-weight: 700; color: #0F172A;">
-          ${item.sets}
-        </td>
-        <td style="padding: 12px 14px; text-align: center; color: #0F172A; font-weight: 600;">
-          ${item.reps}
-        </td>
-        <td style="padding: 12px 14px; text-align: center; color: #475569;">
-          ${item.rest_time}s
-        </td>
-        <td style="padding: 12px 14px; text-align: right; font-weight: 600; color: #10B981;">
-          ${item.target_weight || '-'}
-        </td>
-      </tr>
-    `
-    )
-    .join('');
+  const exercises = plan.exercises || [];
+
+  // Group exercises by day (e.g. "Day 1", "Day 2", etc.)
+  const dayGroups = new Map<string, PlanExerciseItem[]>();
+  if (exercises.length === 0) {
+    dayGroups.set('Day 1', []);
+  } else {
+    for (const ex of exercises) {
+      const rawDay = (ex.day_of_week && ex.day_of_week.trim()) ? ex.day_of_week.trim() : 'Day 1';
+      if (!dayGroups.has(rawDay)) {
+        dayGroups.set(rawDay, []);
+      }
+      dayGroups.get(rawDay)!.push(ex);
+    }
+  }
+
+  const dayKeys = Array.from(dayGroups.keys());
+  const isMultiDay = dayKeys.length > 1;
+  const totalDays = dayKeys.length;
+
+  // Build HTML pages for each day
+  const pagesHtml = dayKeys.map((dayKey, dayIndex) => {
+    const dayExercises = dayGroups.get(dayKey) || [];
+    const isLastPage = dayIndex === dayKeys.length - 1;
+
+    // Grid view cards for each exercise
+    const gridCardsHtml = dayExercises.map((item, idx) => {
+      const catStyle = getCategoryBadgeStyle(item.category);
+      const imgUrl = resolveImageUrl(item.image_uri);
+      // Fallback: use public/categories/<cat>.svg when no exercise image
+      const catKey = (item.category || '').toLowerCase().replace(/\s+/g, '_');
+      const fallbackImgUrl = (typeof window !== 'undefined')
+        ? window.location.origin + '/categories/' + catKey + '.svg'
+        : '/categories/' + catKey + '.svg';
+
+      const imageHtml = imgUrl
+        ? `<div class="card-image-wrapper">
+             <img
+               class="card-exercise-img"
+               src="${imgUrl}"
+               alt="${item.exercise_name}"
+               onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+             />
+             <div class="card-img-fallback" style="display:none;">
+               <img class="card-fallback-svg" src="${fallbackImgUrl}" alt="${item.category}" />
+             </div>
+             <span class="card-num-overlay">${idx + 1}</span>
+             <span class="card-cat-overlay" style="background: ${catStyle.bg}; color: ${catStyle.text}; border: 1px solid ${catStyle.border};">${item.category}</span>
+           </div>`
+        : `<div class="card-image-wrapper">
+             <div class="card-img-fallback">
+               <img class="card-fallback-svg" src="${fallbackImgUrl}" alt="${item.category}" />
+             </div>
+             <span class="card-num-overlay">${idx + 1}</span>
+             <span class="card-cat-overlay" style="background: ${catStyle.bg}; color: ${catStyle.text}; border: 1px solid ${catStyle.border};">${item.category}</span>
+           </div>`;
+
+      return `
+        <div class="exercise-card">
+          ${imageHtml}
+          <div class="card-header">
+            <div class="card-name-col">
+              <div class="card-exercise-name">${item.exercise_name}</div>
+            </div>
+          </div>
+
+          <div class="card-stats-grid">
+            <div class="stat-cell">
+              <div class="stat-label">SETS</div>
+              <div class="stat-val">${item.sets}</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-label">REPS</div>
+              <div class="stat-val">${item.reps}</div>
+            </div>
+            <div class="stat-cell">
+              <div class="stat-label">REST</div>
+              <div class="stat-val">${item.rest_time}s</div>
+            </div>
+          </div>
+
+          ${item.notes
+          ? `<div class="card-notes-row">
+                  <span class="card-notes-tag">Note:</span> ${item.notes}
+                 </div>`
+          : ''
+        }
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="day-page ${isLastPage ? 'last-day-page' : ''}" style="${!isLastPage ? 'page-break-after: always; break-after: page;' : ''}">
+        <!-- ════ TOP HEADER (App Logo & Location on Left, Member Name on Right) ════ -->
+        <div class="top-header">
+          <div class="header-left">
+            <div class="app-brand-row">
+              <div>
+                <div class="app-brand-title">GRIPSTATE</div>
+                <div class="app-brand-subtitle">GripState Gym Management System</div>
+              </div>
+            </div>
+
+            <div class="location-row">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0A3622" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+              <span class="location-name">${gymName}</span>
+            </div>
+          </div>
+
+          <div class="header-right">
+            <div class="member-badge-label">ASSIGNED MEMBER</div>
+            <div class="member-full-name">${member.name}</div>
+            <div class="member-sub-info">
+              ${member.phone ? `<span>📞 ${member.phone}</span>` : ''}
+              ${member.fitness_goals ? `<span>🎯 ${member.fitness_goals}</span>` : ''}
+            </div>
+          </div>
+        </div>
+
+        <!-- ════ ROUTINE PLAN INFORMATION ════ -->
+        <div class="routine-plan-banner">
+          <div class="routine-plan-info">
+            <div class="routine-plan-tag">WORKOUT ROUTINE PLAN</div>
+            <div class="routine-plan-title">${plan.title}</div>
+            <div class="routine-plan-period">
+              <span>Total Exercises: <strong>${exercises.length}</strong></span>
+              ${isMultiDay ? `<span class="dot-sep">•</span><span>Multi-Day Split: <strong>${totalDays} Days</strong></span>` : ''}
+            </div>
+          </div>
+          ${plan.notes
+        ? `<div class="routine-trainer-notes">
+                  <strong>Trainer Note:</strong> ${plan.notes}
+                 </div>`
+        : ''
+      }
+        </div>
+
+        <!-- ════ DAY BANNER ════ -->
+        <div class="day-section-banner">
+          <div class="day-banner-left">
+            <span class="day-tag-badge">${dayKey.toUpperCase()}</span>
+            <span class="day-counter-text">${isMultiDay ? `Day ${dayIndex + 1} of ${totalDays}` : 'Full Routine'}</span>
+          </div>
+          <div class="day-banner-right">
+            ${dayExercises.length} ${dayExercises.length === 1 ? 'Exercise' : 'Exercises'} Scheduled
+          </div>
+        </div>
+
+        <!-- ════ CLEAR EXERCISE GRID VIEW ════ -->
+        <div class="exercise-grid">
+          ${dayExercises.length > 0
+        ? gridCardsHtml
+        : `<div class="empty-day-grid-box">No exercises assigned for ${dayKey}</div>`
+      }
+        </div>
+
+        <!-- ════ FOOTER ════ -->
+        <div class="document-footer">
+          <div class="footer-left">GripState Management &mdash; Train Smart, Live Stronger</div>
+          <div class="footer-right">${isMultiDay ? `${dayKey} &nbsp;&bull;&nbsp; Page ${dayIndex + 1} of ${totalDays}` : `Page 1 of 1`}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
 
   const html = `
     <!DOCTYPE html>
     <html lang="en">
     <head>
       <meta charset="utf-8">
-      <title>${plan.title} - ${member.name}</title>
+      <title></title>
       <style>
+        @page {
+          size: A4 portrait;
+          margin: 8mm 10mm 16mm 10mm;
+        }
+        * {
+          box-sizing: border-box;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
         body {
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
           margin: 0;
-          padding: 32px;
+          padding: 0;
           color: #0F172A;
           background-color: #FFFFFF;
         }
-        .header {
+        .day-page {
+          padding: 12px 14px 8px 14px;
+          page-break-after: always;
+          break-after: page;
+        }
+        .day-page.last-day-page {
+          page-break-after: auto;
+          break-after: auto;
+        }
+        @media print {
+          .day-page {
+            page-break-after: always;
+            break-after: page;
+          }
+          .day-page.last-day-page {
+            page-break-after: auto;
+            break-after: auto;
+          }
+        }
+
+        /* ── TOP HEADER ── */
+        .top-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          border-bottom: 2.5px solid #0A3622;
+          padding-bottom: 12px;
+          margin-bottom: 14px;
+        }
+        .header-left {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .app-brand-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .app-brand-title {
+          font-size: 19px;
+          font-weight: 900;
+          color: #0A3622;
+          letter-spacing: 0.8px;
+          line-height: 1.1;
+        }
+        .app-brand-subtitle {
+          font-size: 11px;
+          font-weight: 600;
+          color: #64748B;
+          letter-spacing: 0.3px;
+        }
+        .location-row {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: #E6F4EA;
+          border: 1px solid #A7D7B5;
+          padding: 3px 10px;
+          border-radius: 6px;
+          width: fit-content;
+        }
+        .location-name {
+          font-size: 11.5px;
+          font-weight: 800;
+          color: #0A3622;
+          letter-spacing: 0.3px;
+        }
+        .header-right {
+          text-align: right;
+          padding: 4px 0;
+          min-width: 200px;
+        }
+        .member-badge-label {
+          font-size: 9.5px;
+          font-weight: 800;
+          color: #64748B;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+          margin-bottom: 3px;
+        }
+        .member-full-name {
+          font-size: 17px;
+          font-weight: 900;
+          color: #0F172A;
+          letter-spacing: -0.2px;
+          line-height: 1.2;
+        }
+        .member-sub-info {
+          display: flex;
+          justify-content: flex-end;
+          gap: 8px;
+          font-size: 10.5px;
+          color: #64748B;
+          font-weight: 600;
+          margin-top: 3px;
+        }
+
+        /* ── ROUTINE PLAN BANNER ── */
+        .routine-plan-banner {
+          background: #F1F5F9;
+          border: 1px solid #CBD5E1;
+          border-radius: 9px;
+          padding: 10px 14px;
+          margin-bottom: 12px;
+        }
+        .routine-plan-tag {
+          font-size: 9.5px;
+          font-weight: 800;
+          color: #10B981;
+          letter-spacing: 0.6px;
+          text-transform: uppercase;
+        }
+        .routine-plan-title {
+          font-size: 16px;
+          font-weight: 800;
+          color: #0A3622;
+          margin: 2px 0;
+        }
+        .routine-plan-period {
+          font-size: 11.5px;
+          color: #475569;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .dot-sep {
+          color: #94A3B8;
+        }
+        .routine-trainer-notes {
+          margin-top: 8px;
+          padding-top: 6px;
+          border-top: 1px dashed #CBD5E1;
+          font-size: 11.5px;
+          color: #334155;
+          line-height: 1.35;
+        }
+
+        /* ── DAY BANNER ── */
+        .day-section-banner {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          border-bottom: 2px solid #0A3622;
-          padding-bottom: 20px;
-          margin-bottom: 24px;
-        }
-        .logo-box {
           background: #0A3622;
           color: #FFFFFF;
-          padding: 8px 16px;
+          padding: 8px 14px;
           border-radius: 8px;
-          font-weight: 800;
-          font-size: 18px;
+          margin-bottom: 14px;
+        }
+        .day-banner-left {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .day-tag-badge {
+          background: #10B981;
+          color: #FFFFFF;
+          font-weight: 900;
+          font-size: 12px;
+          padding: 3px 9px;
+          border-radius: 5px;
           letter-spacing: 0.5px;
-          display: inline-block;
         }
-        .meta-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 16px;
-          background: #F4F7F5;
-          padding: 18px 24px;
-          border-radius: 12px;
-          margin-bottom: 24px;
+        .day-counter-text {
+          font-size: 12px;
+          font-weight: 600;
+          opacity: 0.95;
         }
-        .meta-item {
-          font-size: 13px;
-        }
-        .meta-label {
-          color: #64748B;
-          font-weight: 500;
-          margin-bottom: 2px;
-        }
-        .meta-val {
+        .day-banner-right {
+          font-size: 11.5px;
           font-weight: 700;
-          color: #0F172A;
-          font-size: 15px;
+          opacity: 0.9;
         }
-        table {
+
+        /* ── CLEAR EXERCISE GRID VIEW ── */
+        .exercise-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 10px;
+          margin-bottom: 16px;
+        }
+        .exercise-card {
+          border: 1.5px solid #CBD5E1;
+          border-radius: 10px;
+          background: #FFFFFF;
+          padding: 8px 10px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+          page-break-inside: avoid;
+          break-inside: avoid;
+          overflow: hidden;
+        }
+        /* ── EXERCISE IMAGE ── */
+        .card-image-wrapper {
+          position: relative;
           width: 100%;
-          border-collapse: collapse;
-          margin-bottom: 30px;
+          height: 185px;
+          border-radius: 7px;
+          overflow: hidden;
+          margin-bottom: 7px;
         }
-        th {
+        .card-exercise-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+        .card-img-fallback {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .card-fallback-svg {
+          width: 80px;
+          height: 80px;
+          object-fit: contain;
+        }
+        .card-num-overlay {
+          position: absolute;
+          top: 7px;
+          left: 7px;
           background: #0A3622;
           color: #FFFFFF;
+          font-weight: 900;
+          font-size: 11px;
+          width: 22px;
+          height: 22px;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          line-height: 1;
+        }
+        .card-cat-overlay {
+          position: absolute;
+          top: 7px;
+          right: 7px;
+          padding: 2px 7px;
+          border-radius: 999px;
+          font-size: 8.5px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+          line-height: 1.5;
+          pointer-events: none;
+        }
+        .card-header {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          margin-bottom: 9px;
+          padding-bottom: 7px;
+          border-bottom: 1px solid #F1F5F9;
+        }
+        .card-number-badge {
+          background: #0A3622;
+          color: #FFFFFF;
+          font-weight: 800;
           font-size: 12px;
+          width: 24px;
+          height: 24px;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .card-name-col {
+          flex: 1;
+        }
+        .card-exercise-name {
+          font-weight: 800;
+          font-size: 13.5px;
+          color: #0F172A;
+          line-height: 1.25;
+          margin-bottom: 4px;
+        }
+        .card-category-pill {
+          display: inline-block;
+          padding: 2px 8px;
+          border-radius: 999px;
+          font-size: 10px;
           font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.5px;
-          padding: 12px 14px;
-          text-align: left;
+          letter-spacing: 0.3px;
         }
-        .footer {
-          margin-top: 40px;
+        .card-stats-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 3px;
+          background: #F8FAFC;
+          border: 1px solid #E2E8F0;
+          border-radius: 6px;
+          padding: 5px 3px;
+        }
+        .stat-cell {
+          text-align: center;
+        }
+        .stat-label {
+          font-size: 8px;
+          font-weight: 700;
+          color: #64748B;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          margin-bottom: 1px;
+        }
+        .stat-val {
+          font-size: 12px;
+          font-weight: 800;
+          color: #0F172A;
+        }
+        .card-notes-row {
+          margin-top: 7px;
+          padding-top: 5px;
+          border-top: 1px dashed #E2E8F0;
+          font-size: 10.5px;
+          color: #475569;
+        }
+        .card-notes-tag {
+          font-weight: 800;
+          color: #0A3622;
+        }
+        .empty-day-grid-box {
+          grid-column: span 3;
+          padding: 24px;
+          text-align: center;
+          color: #94A3B8;
+          font-size: 12.5px;
+          font-style: italic;
+          border: 1px dashed #CBD5E1;
+          border-radius: 8px;
+        }
+
+        /* ── FOOTER (fixed to page bottom — prints on every page) ── */
+        .document-footer {
+          position: fixed;
+          bottom: 0;
+          left: 0;
+          right: 0;
           border-top: 1px solid #E2E8F0;
-          padding-top: 16px;
+          padding: 5px 10mm;
           display: flex;
           justify-content: space-between;
-          font-size: 12px;
+          align-items: center;
+          font-size: 9.5px;
           color: #94A3B8;
+          background: #FFFFFF;
+        }
+        .footer-left {
+          font-weight: 600;
+        }
+        .footer-right {
+          font-weight: 800;
+          color: #64748B;
         }
       </style>
     </head>
     <body>
-      <div class="header">
-        <div>
-          <div class="logo-box">APEX GYM</div>
-          <p style="margin: 6px 0 0; color: #64748B; font-size: 13px;">${gymName} • Personalized Workout Routine</p>
-        </div>
-        <div style="text-align: right;">
-          <h2 style="margin: 0; color: #0A3622; font-size: 22px;">${plan.title}</h2>
-          <span style="font-size: 12px; color: #10B981; font-weight: 700;">Status: Active Routine</span>
-        </div>
-      </div>
-
-      <div class="meta-grid">
-        <div class="meta-item">
-          <div class="meta-label">MEMBER NAME</div>
-          <div class="meta-val">${member.name}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">VALIDITY PERIOD</div>
-          <div class="meta-val">${plan.start_date} → ${plan.end_date}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">CONTACT / PHONE</div>
-          <div class="meta-val">${member.phone || 'N/A'}</div>
-        </div>
-        <div class="meta-item">
-          <div class="meta-label">FITNESS GOAL</div>
-          <div class="meta-val">${member.fitness_goals || 'General Fitness'}</div>
-        </div>
-      </div>
-
-      ${plan.notes ? `<div style="background: #E6F4EA; border-left: 4px solid #10B981; padding: 12px 16px; border-radius: 6px; font-size: 13px; color: #0A3622; margin-bottom: 24px;"><strong>Trainer Notes:</strong> ${plan.notes}</div>` : ''}
-
-      <table>
-        <thead>
-          <tr>
-            <th>Exercise</th>
-            <th>Category</th>
-            <th style="text-align: center;">Sets</th>
-            <th style="text-align: center;">Reps</th>
-            <th style="text-align: center;">Rest</th>
-            <th style="text-align: right;">Load</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${exercisesHtml}
-        </tbody>
-      </table>
-
-      <div class="footer">
-        <div>Generated by GripState Offline Management System</div>
-        <div>Keep hydrated & focus on proper form!</div>
-      </div>
+      ${pagesHtml}
     </body>
     </html>
   `;
 
+  // ════ PRINT / SHARE LOGIC ════
+  // On Web: Render into an isolated hidden iframe so the main application screen is NEVER printed or shown!
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+    const existingFrame = document.getElementById('workout-pdf-print-frame');
+    if (existingFrame && existingFrame.parentNode) {
+      existingFrame.parentNode.removeChild(existingFrame);
+    }
+
+    const printIframe = document.createElement('iframe');
+    printIframe.setAttribute('id', 'workout-pdf-print-frame');
+    printIframe.style.position = 'fixed';
+    printIframe.style.top = '-9999px';
+    printIframe.style.left = '-9999px';
+    printIframe.style.width = '1000px';
+    printIframe.style.height = '1000px';
+    printIframe.style.border = 'none';
+    printIframe.style.zIndex = '-9999';
+    document.body.appendChild(printIframe);
+
+    const frameDoc = printIframe.contentWindow?.document || printIframe.contentDocument;
+    if (frameDoc) {
+      frameDoc.open();
+      frameDoc.write(html);
+      frameDoc.close();
+
+      setTimeout(() => {
+        try {
+          printIframe.contentWindow?.focus();
+          printIframe.contentWindow?.print();
+        } catch (err) {
+          console.error('Error printing workout PDF in iframe:', err);
+        } finally {
+          setTimeout(() => {
+            if (printIframe.parentNode) {
+              printIframe.parentNode.removeChild(printIframe);
+            }
+          }, 2000);
+        }
+      }, 350);
+    }
+    return;
+  }
+
+  // On Native Mobile (iOS & Android): Generate PDF file and trigger native sharing sheet
   const { uri } = await Print.printToFileAsync({ html });
 
   if (await Sharing.isAvailableAsync()) {

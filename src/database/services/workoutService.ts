@@ -214,6 +214,78 @@ export const workoutService = {
     });
   },
 
+  /**
+   * Retrieves a workout plan by ID including its assigned exercises.
+   */
+  async getPlanById(planId: string): Promise<WorkoutPlan | null> {
+    const planRow = await queryFirst<any>(
+      `SELECT * FROM workout_plans WHERE id = ?;`,
+      [planId]
+    );
+    if (!planRow) return null;
+
+    const exercises = await this.getPlanExercises(planRow.id);
+    return {
+      ...planRow,
+      is_active: Boolean(planRow.is_active),
+      exercises,
+    };
+  },
+
+  /**
+   * Updates an existing workout plan and refreshes its assigned exercises.
+   */
+  async updateWorkoutPlan(
+    planId: string,
+    plan: {
+      title: string;
+      start_date: string;
+      end_date: string;
+      notes?: string;
+      is_active?: boolean;
+    },
+    exercises: Omit<PlanExerciseItem, 'id' | 'workout_plan_id' | 'exercise_name' | 'category'>[]
+  ): Promise<WorkoutPlan> {
+    return await withTransaction(async (db) => {
+      // 1. Update plan row
+      await db.runAsync(
+        `UPDATE workout_plans
+         SET title = ?, start_date = ?, end_date = ?, notes = ?
+         WHERE id = ?;`,
+        [plan.title.trim(), plan.start_date, plan.end_date, plan.notes?.trim() || null, planId]
+      );
+
+      // 2. Remove previous plan exercises
+      await db.runAsync('DELETE FROM plan_exercises WHERE workout_plan_id = ?;', [planId]);
+
+      // 3. Re-insert updated exercises
+      for (let i = 0; i < exercises.length; i++) {
+        const ex = exercises[i];
+        const itemPk = `pe_${Date.now()}_${i}`;
+        await db.runAsync(
+          `INSERT INTO plan_exercises (
+            id, workout_plan_id, exercise_id, day_of_week, sets, reps, rest_time, target_weight, order_index, notes
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+          [
+            itemPk,
+            planId,
+            ex.exercise_id,
+            ex.day_of_week || 'Day 1',
+            ex.sets || 3,
+            ex.reps || '10-12',
+            ex.rest_time || 60,
+            ex.target_weight || null,
+            i,
+            ex.notes?.trim() || null,
+          ]
+        );
+      }
+
+      const updated = await this.getPlanById(planId);
+      return updated!;
+    });
+  },
+
   async deleteWorkoutPlan(planId: string): Promise<void> {
     await runQuery('DELETE FROM workout_plans WHERE id = ?;', [planId]);
   },

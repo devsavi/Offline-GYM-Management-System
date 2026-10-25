@@ -11,7 +11,7 @@ export async function requestCalendarPermissions(): Promise<boolean> {
 }
 
 /**
- * Finds or creates a dedicated local calendar for ApexGym workouts.
+ * Finds or creates a dedicated local calendar for GripState workouts.
  * On Android and iOS, this syncs with the device's default account (e.g. Google Calendar).
  */
 export async function getOrCreateGymCalendar(): Promise<string | null> {

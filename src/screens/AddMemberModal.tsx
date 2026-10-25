@@ -121,6 +121,9 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
 
   // ── TAB 3: WORKOUT ROUTINE STATES ──
   const [workoutTitle, setWorkoutTitle] = useState('');
+  const [workoutRoutineType, setWorkoutRoutineType] = useState<'single' | 'multi'>('single');
+  const [workoutAvailableDays, setWorkoutAvailableDays] = useState<string[]>(['Day 1']);
+  const [workoutActiveDay, setWorkoutActiveDay] = useState<string>('Day 1');
   const [workoutStartDate, setWorkoutStartDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [workoutDuration, setWorkoutDuration] = useState<DurationOption>('1 Month');
   const [workoutEndDate, setWorkoutEndDate] = useState(() => {
@@ -314,7 +317,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
       exercise_id: exercise.id,
       exercise_name: exercise.name,
       category: exercise.category,
-      day_of_week: 'Day 1',
+      day_of_week: workoutRoutineType === 'multi' ? workoutActiveDay : 'Day 1',
       sets: 3,
       reps: '10-12',
       rest_time: 60,
@@ -348,7 +351,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
       exercise_id: exercise.id,
       exercise_name: exercise.name,
       category: exercise.category,
-      day_of_week: 'Day 1',
+      day_of_week: workoutRoutineType === 'multi' ? workoutActiveDay : 'Day 1',
       sets: 3,
       reps: '10-12',
       rest_time: 60,
@@ -408,9 +411,40 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
     });
   };
 
+  // Day management helpers for multi-day routines
+  const handleAddWorkoutDay = () => {
+    const nextNum = workoutAvailableDays.length + 1;
+    const newDay = `Day ${nextNum}`;
+    setWorkoutAvailableDays((prev) => [...prev, newDay]);
+    setWorkoutActiveDay(newDay);
+  };
+
+  const handleRemoveWorkoutDay = (dayToRemove: string) => {
+    if (workoutAvailableDays.length <= 1) return;
+    const remaining = workoutAvailableDays.filter((d) => d !== dayToRemove);
+    setWorkoutAvailableDays(remaining);
+    setSelectedExercises((prev) => prev.filter((e) => (e.day_of_week || 'Day 1') !== dayToRemove));
+    if (workoutActiveDay === dayToRemove) {
+      setWorkoutActiveDay(remaining[0] || 'Day 1');
+    }
+  };
+
+  const handleChangeExerciseDay = (exerciseIdx: number, targetDay: string) => {
+    setSelectedExercises((prev) => {
+      const updated = [...prev];
+      if (updated[exerciseIdx]) {
+        updated[exerciseIdx] = { ...updated[exerciseIdx], day_of_week: targetDay };
+      }
+      return updated;
+    });
+  };
+
   // Quick routine template applicator
   const applyQuickTemplate = (templateName: string) => {
     if (templateName === 'Full Body Starter') {
+      setWorkoutRoutineType('single');
+      setWorkoutAvailableDays(['Day 1']);
+      setWorkoutActiveDay('Day 1');
       setWorkoutTitle('Full Body Starter Routine');
       const sampleNames = ['Bench Press', 'Barbell Squat', 'Lat Pulldown', 'Overhead Shoulder Press'];
       const matched = allExercises.filter((e) =>
@@ -431,25 +465,98 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
         );
       }
     } else if (templateName === 'Push / Pull Starter') {
-      setWorkoutTitle('Push & Pull Foundations');
-      const sampleNames = ['Bench Press', 'Pushups', 'Incline Dumbbell Press', 'Lat Pulldown', 'Barbell Row'];
-      const matched = allExercises.filter((e) =>
-        sampleNames.some((sn) => e.name.toLowerCase().includes(sn.toLowerCase()))
-      );
-      if (matched.length > 0) {
-        setSelectedExercises(
-          matched.slice(0, 5).map((e, idx) => ({
-            exercise_id: e.id,
-            exercise_name: e.name,
-            category: e.category,
-            day_of_week: idx < 3 ? 'Push Day' : 'Pull Day',
-            sets: 3,
-            reps: '10-12',
-            rest_time: 60,
-            target_weight: 'Moderate',
-          }))
-        );
-      }
+      setWorkoutRoutineType('multi');
+      setWorkoutAvailableDays(['Day 1', 'Day 2']);
+      setWorkoutActiveDay('Day 1');
+      setWorkoutTitle('Push & Pull 2-Day Split');
+      const pushMatches = allExercises.filter((e) =>
+        ['bench press', 'overhead shoulder press', 'incline barbell', 'pushup'].some((sn) =>
+          e.name.toLowerCase().includes(sn)
+        )
+      ).slice(0, 3);
+      const pullMatches = allExercises.filter((e) =>
+        ['lat pulldown', 'barbell bent over row', 'pull up', 'deadlift', 'bicep'].some((sn) =>
+          e.name.toLowerCase().includes(sn)
+        )
+      ).slice(0, 3);
+
+      const items: AddedExerciseItem[] = [
+        ...pushMatches.map((e) => ({
+          exercise_id: e.id,
+          exercise_name: e.name,
+          category: e.category,
+          day_of_week: 'Day 1',
+          sets: 3,
+          reps: '10-12',
+          rest_time: 60,
+          target_weight: 'Moderate',
+        })),
+        ...pullMatches.map((e) => ({
+          exercise_id: e.id,
+          exercise_name: e.name,
+          category: e.category,
+          day_of_week: 'Day 2',
+          sets: 3,
+          reps: '10-12',
+          rest_time: 60,
+          target_weight: 'Moderate',
+        })),
+      ];
+      setSelectedExercises(items);
+    } else if (templateName === 'Push / Pull / Legs') {
+      setWorkoutRoutineType('multi');
+      setWorkoutAvailableDays(['Day 1', 'Day 2', 'Day 3']);
+      setWorkoutActiveDay('Day 1');
+      setWorkoutTitle('3-Day Push / Pull / Legs Split');
+      const pushMatches = allExercises.filter((e) =>
+        ['bench press', 'overhead shoulder press', 'triceps'].some((sn) =>
+          e.name.toLowerCase().includes(sn)
+        )
+      ).slice(0, 2);
+      const pullMatches = allExercises.filter((e) =>
+        ['lat pulldown', 'barbell bent over row', 'bicep'].some((sn) =>
+          e.name.toLowerCase().includes(sn)
+        )
+      ).slice(0, 2);
+      const legMatches = allExercises.filter((e) =>
+        ['squat', 'leg press', 'lunge', 'calf'].some((sn) =>
+          e.name.toLowerCase().includes(sn)
+        )
+      ).slice(0, 2);
+
+      const items: AddedExerciseItem[] = [
+        ...pushMatches.map((e) => ({
+          exercise_id: e.id,
+          exercise_name: e.name,
+          category: e.category,
+          day_of_week: 'Day 1',
+          sets: 3,
+          reps: '10-12',
+          rest_time: 60,
+          target_weight: 'Moderate',
+        })),
+        ...pullMatches.map((e) => ({
+          exercise_id: e.id,
+          exercise_name: e.name,
+          category: e.category,
+          day_of_week: 'Day 2',
+          sets: 3,
+          reps: '10-12',
+          rest_time: 60,
+          target_weight: 'Moderate',
+        })),
+        ...legMatches.map((e) => ({
+          exercise_id: e.id,
+          exercise_name: e.name,
+          category: e.category,
+          day_of_week: 'Day 3',
+          sets: 3,
+          reps: '10-12',
+          rest_time: 60,
+          target_weight: 'Moderate',
+        })),
+      ];
+      setSelectedExercises(items);
     }
   };
 
@@ -1267,7 +1374,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
                     activeOpacity={0.8}
                   >
                     <Ionicons name="flash-outline" size={13} color={colors.primary} />
-                    <Text style={styles.quickTemplatePillText}>Full Body Starter</Text>
+                    <Text style={styles.quickTemplatePillText}>Full Body (1 Day)</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -1276,7 +1383,16 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
                     activeOpacity={0.8}
                   >
                     <Ionicons name="barbell-outline" size={13} color={colors.primary} />
-                    <Text style={styles.quickTemplatePillText}>Push & Pull</Text>
+                    <Text style={styles.quickTemplatePillText}>Push & Pull (2 Days)</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.quickTemplatePill}
+                    onPress={() => applyQuickTemplate('Push / Pull / Legs')}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="flame-outline" size={13} color={colors.primary} />
+                    <Text style={styles.quickTemplatePillText}>PPL Split (3 Days)</Text>
                   </TouchableOpacity>
 
                   {selectedExercises.length > 0 && (
@@ -1285,6 +1401,9 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
                       onPress={() => {
                         setSelectedExercises([]);
                         setWorkoutTitle('');
+                        setWorkoutAvailableDays(['Day 1']);
+                        setWorkoutActiveDay('Day 1');
+                        setWorkoutRoutineType('single');
                       }}
                       activeOpacity={0.8}
                     >
@@ -1373,12 +1492,134 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
                 />
               </View>
 
+              {/* Routine Structure: Single Day vs Multi-Day */}
+              <Text style={styles.inputLabel}>Routine Structure</Text>
+              <View style={styles.routineTypeToggleRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.routineTypeBtn,
+                    workoutRoutineType === 'single' && styles.routineTypeBtnActive,
+                  ]}
+                  onPress={() => {
+                    setWorkoutRoutineType('single');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name="today-outline"
+                    size={16}
+                    color={workoutRoutineType === 'single' ? '#FFFFFF' : colors.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.routineTypeBtnText,
+                      workoutRoutineType === 'single' && styles.routineTypeBtnTextActive,
+                    ]}
+                  >
+                    Single-Day Routine
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.routineTypeBtn,
+                    workoutRoutineType === 'multi' && styles.routineTypeBtnActive,
+                  ]}
+                  onPress={() => {
+                    setWorkoutRoutineType('multi');
+                    if (workoutAvailableDays.length <= 1) {
+                      setWorkoutAvailableDays(['Day 1', 'Day 2']);
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name="calendar-outline"
+                    size={16}
+                    color={workoutRoutineType === 'multi' ? '#FFFFFF' : colors.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.routineTypeBtnText,
+                      workoutRoutineType === 'multi' && styles.routineTypeBtnTextActive,
+                    ]}
+                  >
+                    Multi-Day Split
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Multi-Day Navigation Bar */}
+              {workoutRoutineType === 'multi' && (
+                <View style={styles.daysBarContainer}>
+                  <View style={styles.daysBarHeader}>
+                    <Text style={styles.daysBarTitle}>Routine Days ({workoutAvailableDays.length}):</Text>
+                    <TouchableOpacity
+                      style={styles.addDayBtn}
+                      onPress={handleAddWorkoutDay}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="add-circle-outline" size={15} color={colors.primary} />
+                      <Text style={styles.addDayBtnText}>+ Add Day</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.daysScrollRow}
+                  >
+                    {workoutAvailableDays.map((day) => {
+                      const count = selectedExercises.filter((e) => (e.day_of_week || 'Day 1') === day).length;
+                      const isActive = workoutActiveDay === day;
+                      return (
+                        <View key={day} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <TouchableOpacity
+                            style={[styles.dayTabPill, isActive && styles.dayTabPillActive]}
+                            onPress={() => setWorkoutActiveDay(day)}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={[styles.dayTabPillText, isActive && styles.dayTabPillTextActive]}>
+                              {day}
+                            </Text>
+                            <View style={[styles.dayCountBadge, isActive && styles.dayCountBadgeActive]}>
+                              <Text style={[styles.dayCountBadgeText, isActive && styles.dayCountBadgeTextActive]}>
+                                {count}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+
+                          {workoutAvailableDays.length > 1 && (
+                            <TouchableOpacity
+                              style={styles.deleteDayBtn}
+                              onPress={() => handleRemoveWorkoutDay(day)}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons name="close" size={12} color="#DC2626" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
+
               {/* Added Exercises List */}
               <View style={{ marginTop: 14 }}>
                 <View style={styles.exerciseSectionHeader}>
-                  <Text style={styles.exerciseSectionTitle}>
-                    Assigned Exercises ({selectedExercises.length})
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.exerciseSectionTitle}>
+                      {workoutRoutineType === 'multi'
+                        ? `${workoutActiveDay} Exercises (${selectedExercises.filter((e) => (e.day_of_week || 'Day 1') === workoutActiveDay).length})`
+                        : `Assigned Exercises (${selectedExercises.length})`}
+                    </Text>
+                    {workoutRoutineType === 'multi' && (
+                      <Text style={styles.daySubCountText}>
+                        Total in Routine: {selectedExercises.length} Exercises across {workoutAvailableDays.length} Days
+                      </Text>
+                    )}
+                  </View>
                   <TouchableOpacity
                     style={styles.addExerciseInlineBtn}
                     onPress={() => {
@@ -1389,21 +1630,41 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
                     activeOpacity={0.85}
                   >
                     <Ionicons name="add" size={16} color="#FFFFFF" />
-                    <Text style={styles.addExerciseInlineBtnText}>Add Exercise</Text>
+                    <Text style={styles.addExerciseInlineBtnText}>
+                      {workoutRoutineType === 'multi' ? `Add to ${workoutActiveDay}` : 'Add Exercise'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
 
-                {selectedExercises.length === 0 ? (
-                  <View style={styles.emptyExerciseBox}>
-                    <Ionicons name="barbell-outline" size={32} color={colors.textMuted} />
-                    <Text style={styles.emptyExerciseTitle}>No exercises added yet</Text>
-                    <Text style={styles.emptyExerciseSubtitle}>
-                      Tap "Add Exercise" or choose a Quick Starter above to assign exercises.
-                    </Text>
-                  </View>
-                ) : (
-                  selectedExercises.map((ex, idx) => (
-                    <View key={`${ex.exercise_id}_${idx}`} style={styles.exerciseItemCard}>
+                {(() => {
+                  const itemsToRender = (
+                    workoutRoutineType === 'multi'
+                      ? selectedExercises
+                          .map((ex, originalIndex) => ({ ex, originalIndex }))
+                          .filter(({ ex }) => (ex.day_of_week || 'Day 1') === workoutActiveDay)
+                      : selectedExercises.map((ex, originalIndex) => ({ ex, originalIndex }))
+                  );
+
+                  if (itemsToRender.length === 0) {
+                    return (
+                      <View style={styles.emptyExerciseBox}>
+                        <Ionicons name="barbell-outline" size={32} color={colors.textMuted} />
+                        <Text style={styles.emptyExerciseTitle}>
+                          {workoutRoutineType === 'multi'
+                            ? `No exercises added for ${workoutActiveDay} yet`
+                            : 'No exercises added yet'}
+                        </Text>
+                        <Text style={styles.emptyExerciseSubtitle}>
+                          {workoutRoutineType === 'multi'
+                            ? `Tap "Add to ${workoutActiveDay}" or select a Quick Starter to schedule movements.`
+                            : 'Tap "Add Exercise" or choose a Quick Starter above to assign exercises.'}
+                        </Text>
+                      </View>
+                    );
+                  }
+
+                  return itemsToRender.map(({ ex, originalIndex }, idx) => (
+                    <View key={`${ex.exercise_id}_${originalIndex}`} style={styles.exerciseItemCard}>
                       <View style={styles.exerciseItemHeader}>
                         <View style={styles.exerciseOrderBadge}>
                           <Text style={styles.exerciseOrderText}>{idx + 1}</Text>
@@ -1422,16 +1683,47 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
                         </View>
                         <View style={{ flex: 1, marginLeft: 10 }}>
                           <Text style={styles.exerciseItemName}>{ex.exercise_name}</Text>
-                          <Text style={styles.exerciseItemCategory}>{ex.category}</Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                            <Text style={styles.exerciseItemCategory}>{ex.category}</Text>
+                            {workoutRoutineType === 'multi' && (
+                              <View style={styles.cardDayBadge}>
+                                <Text style={styles.cardDayBadgeText}>{ex.day_of_week || workoutActiveDay}</Text>
+                              </View>
+                            )}
+                          </View>
                         </View>
                         <TouchableOpacity
-                          onPress={() => handleRemoveExercise(idx)}
+                          onPress={() => handleRemoveExercise(originalIndex)}
                           style={styles.exerciseDeleteBtn}
                           activeOpacity={0.7}
                         >
                           <Ionicons name="trash-outline" size={16} color="#DC2626" />
                         </TouchableOpacity>
                       </View>
+
+                      {/* Day Changer Row (if multi-day) */}
+                      {workoutRoutineType === 'multi' && workoutAvailableDays.length > 1 && (
+                        <View style={styles.daySwitcherRow}>
+                          <Text style={styles.daySwitcherLabel}>Assign to:</Text>
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                            {workoutAvailableDays.map((d) => {
+                              const isCurrent = (ex.day_of_week || 'Day 1') === d;
+                              return (
+                                <TouchableOpacity
+                                  key={d}
+                                  style={[styles.smallDaySwitchPill, isCurrent && styles.smallDaySwitchPillActive]}
+                                  onPress={() => handleChangeExerciseDay(originalIndex, d)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Text style={[styles.smallDaySwitchText, isCurrent && styles.smallDaySwitchTextActive]}>
+                                    {d}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </ScrollView>
+                        </View>
+                      )}
 
                       {/* Sets, Reps, Rest, Weight Row */}
                       <View style={styles.exerciseConfigRow}>
@@ -1441,7 +1733,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
                             style={styles.exerciseConfigInput}
                             keyboardType="numeric"
                             value={String(ex.sets)}
-                            onChangeText={(val) => handleUpdateExercise(idx, 'sets', parseInt(val, 10) || 1)}
+                            onChangeText={(val) => handleUpdateExercise(originalIndex, 'sets', parseInt(val, 10) || 1)}
                           />
                         </View>
                         <View style={styles.exerciseConfigCol}>
@@ -1449,7 +1741,7 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
                           <TextInput
                             style={styles.exerciseConfigInput}
                             value={ex.reps}
-                            onChangeText={(val) => handleUpdateExercise(idx, 'reps', val)}
+                            onChangeText={(val) => handleUpdateExercise(originalIndex, 'reps', val)}
                           />
                         </View>
                         <View style={styles.exerciseConfigCol}>
@@ -1458,21 +1750,13 @@ export const AddMemberModal: React.FC<Props> = ({ navigation }) => {
                             style={styles.exerciseConfigInput}
                             keyboardType="numeric"
                             value={String(ex.rest_time)}
-                            onChangeText={(val) => handleUpdateExercise(idx, 'rest_time', parseInt(val, 10) || 0)}
-                          />
-                        </View>
-                        <View style={[styles.exerciseConfigCol, { flex: 1.3 }]}>
-                          <Text style={styles.exerciseConfigLabel}>Weight/Note</Text>
-                          <TextInput
-                            style={styles.exerciseConfigInput}
-                            value={ex.target_weight}
-                            onChangeText={(val) => handleUpdateExercise(idx, 'target_weight', val)}
+                            onChangeText={(val) => handleUpdateExercise(originalIndex, 'rest_time', parseInt(val, 10) || 0)}
                           />
                         </View>
                       </View>
                     </View>
-                  ))
-                )}
+                  ));
+                })()}
               </View>
 
 
@@ -3657,5 +3941,174 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     letterSpacing: 0.4,
+  },
+
+  // ── WORKOUT MULTI-DAY STYLES ──
+  routineTypeToggleRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  routineTypeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F8FAFC',
+  },
+  routineTypeBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  routineTypeBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+  },
+  routineTypeBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  daysBarContainer: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  daysBarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  daysBarTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#475569',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  addDayBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#E6F4EA',
+    borderRadius: 6,
+  },
+  addDayBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  daysScrollRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dayTabPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#CBD5E1',
+  },
+  dayTabPillActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  dayTabPillText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  dayTabPillTextActive: {
+    color: '#FFFFFF',
+  },
+  dayCountBadge: {
+    backgroundColor: '#E2E8F0',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 999,
+  },
+  dayCountBadgeActive: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  dayCountBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#475569',
+  },
+  dayCountBadgeTextActive: {
+    color: '#FFFFFF',
+  },
+  deleteDayBtn: {
+    marginLeft: 3,
+    padding: 4,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 999,
+  },
+  daySubCountText: {
+    fontSize: 11.5,
+    color: colors.textMuted,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  cardDayBadge: {
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+  },
+  cardDayBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  daySwitcherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  daySwitcherLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  smallDaySwitchPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  smallDaySwitchPillActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  smallDaySwitchText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  smallDaySwitchTextActive: {
+    color: '#FFFFFF',
   },
 });

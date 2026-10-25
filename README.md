@@ -1,4 +1,4 @@
-# ApexGym Manager - Complete Offline-First Mobile Application
+# GripState Manager - Complete Offline-First Mobile Application
 
 A high-performance, offline-first mobile application built for gym owners, personal trainers, and fitness coordinators. Designed with **Expo (React Native + TypeScript)**, **Expo SQLite**, **Zustand**, and a **nature-inspired emerald/forest green minimalist UI**.
 
