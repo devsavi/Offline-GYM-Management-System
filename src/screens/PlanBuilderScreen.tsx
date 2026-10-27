@@ -58,11 +58,14 @@ const CATEGORIES: ('All' | ExerciseCategory)[] = [
 
 export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
-  const { memberId, planId } = route.params;
+  const { memberId, planId, isTemporary, initialExercises } = (route.params || {}) as any;
+  const isTemp = Boolean(isTemporary || (!memberId && !planId));
   const { selectedLocation } = useGymStore();
   const isEditingPlan = Boolean(planId);
 
   const [member, setMember] = useState<Member | null>(null);
+  const [tempRecipientName, setTempRecipientName] = useState('');
+  const [tempRecipientPhone, setTempRecipientPhone] = useState('');
 
   // Form Fields
   const [title, setTitle] = useState('');
@@ -129,10 +132,33 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [memberId]);
 
   const loadMemberAndExercises = async () => {
-    const m = await memberService.getMemberById(memberId);
-    setMember(m);
+    if (memberId) {
+      try {
+        const m = await memberService.getMemberById(memberId);
+        setMember(m);
+      } catch (e) {
+        console.error('Failed to load member for PlanBuilder:', e);
+      }
+    }
     const exercises = await workoutService.getExercises();
     setAllExercises(exercises);
+
+    if (initialExercises && Array.isArray(initialExercises) && initialExercises.length > 0) {
+      setSelectedExercises(
+        initialExercises.map((e: Exercise, idx: number) => ({
+          exercise_id: e.id,
+          exercise_name: e.name,
+          category: e.category,
+          sets: 3,
+          reps: '10-12',
+          rest_time: 60,
+          target_weight: 'Moderate',
+          order_index: idx,
+          day_of_week: 'Day 1',
+          image_uri: e.image_uri,
+        }))
+      );
+    }
 
     if (planId) {
       const existing = await workoutService.getPlanById(planId);
@@ -490,16 +516,20 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   const handleExportPlanPDF = async () => {
-    if (!member) return;
     if (selectedExercises.length === 0) {
       showAlert('No Exercises', 'Please add at least one exercise before exporting.');
       return;
     }
     try {
+      const mockMember: any = member || {
+        name: tempRecipientName.trim() || 'Guest / Walk-in Client',
+        phone: tempRecipientPhone.trim() || undefined,
+        fitness_goals: 'Temporary Workout Routine',
+      };
       const mockPlan: any = {
-        id: planId || 'draft_plan',
-        member_id: memberId,
-        title: title.trim() || 'Personalized Workout Routine',
+        id: planId || 'draft_plan_' + Date.now(),
+        member_id: memberId || 'temp_member',
+        title: title.trim() || (isTemp ? 'Custom Workout Routine' : 'Personalized Workout Routine'),
         start_date: startDate,
         end_date: endDate,
         notes: notes.trim() || undefined,
@@ -521,7 +551,7 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
           image_uri: e.image_uri,
         })),
       };
-      await exportWorkoutPlanPDF(member, mockPlan, selectedLocation?.name || 'GripState');
+      await exportWorkoutPlanPDF(mockMember, mockPlan, selectedLocation?.name || 'GripState');
     } catch (e: any) {
       showAlert('PDF Export Error', e.message);
     }
@@ -635,6 +665,10 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
   };
 
   const handleSavePlan = async () => {
+    if (isTemp) {
+      handleExportPlanPDF();
+      return;
+    }
     if (!title.trim()) {
       showAlert('Required', 'Please enter a plan title.');
       return;
@@ -733,7 +767,11 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
               <Text style={styles.foliageBrandTitle}>GripState</Text>
               <View style={styles.foliageDivider} />
               <Text style={styles.foliageBrandSubtitle} numberOfLines={1}>
-                {member ? (isEditingPlan ? `Edit Routine: ${member.name}` : `Plan for ${member.name}`) : 'The professional gym management platform.'}
+                {isTemp
+                  ? (tempRecipientName.trim() ? `Temp Routine: ${tempRecipientName.trim()}` : 'Temporary Routine Builder')
+                  : member
+                  ? (isEditingPlan ? `Edit Routine: ${member.name}` : `Plan for ${member.name}`)
+                  : 'The professional gym management platform.'}
               </Text>
             </View>
           </ImageBackground>
@@ -748,16 +786,28 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
             <Ionicons name="arrow-back" size={20} color="#FFFFFF" />
           </TouchableOpacity>
 
-          {/* Top Right Save / Update Button */}
-          <TouchableOpacity
-            style={[styles.topRightSaveBtn, { top: insets.top + 12 }]}
-            onPress={handleSavePlan}
-            activeOpacity={0.8}
-            accessibilityLabel={isEditingPlan ? 'Update Routine' : 'Save Plan'}
-          >
-            <Ionicons name={isEditingPlan ? 'checkmark-done' : 'checkmark'} size={16} color="#FFFFFF" />
-            <Text style={styles.topRightSaveBtnText}>{isEditingPlan ? 'Update' : 'Save'}</Text>
-          </TouchableOpacity>
+          {/* Top Right Save / Update / Export Button */}
+          {isTemp ? (
+            <TouchableOpacity
+              style={[styles.topRightSaveBtn, { top: insets.top + 12 }]}
+              onPress={handleExportPlanPDF}
+              activeOpacity={0.8}
+              accessibilityLabel="Export PDF"
+            >
+              <Ionicons name="share-outline" size={16} color="#FFFFFF" />
+              <Text style={styles.topRightSaveBtnText}>Export</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.topRightSaveBtn, { top: insets.top + 12 }]}
+              onPress={handleSavePlan}
+              activeOpacity={0.8}
+              accessibilityLabel={isEditingPlan ? 'Update Routine' : 'Save Plan'}
+            >
+              <Ionicons name={isEditingPlan ? 'checkmark-done' : 'checkmark'} size={16} color="#FFFFFF" />
+              <Text style={styles.topRightSaveBtnText}>{isEditingPlan ? 'Update' : 'Save'}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -818,7 +868,37 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
             </ScrollView>
           </View>
 
-          <Text style={styles.sectionHeading}>{isEditingPlan ? 'Edit Routine Configuration' : 'Plan Configuration'}</Text>
+          {isTemp && (
+            <View style={styles.tempRoutineNoticeCard}>
+              <View style={styles.tempNoticeBadge}>
+                <Ionicons name="flash" size={12} color="#0A3622" />
+                <Text style={styles.tempNoticeBadgeText}>TEMPORARY ROUTINE</Text>
+              </View>
+              <Text style={styles.tempNoticeText}>
+                Build and customize this routine freely. Export or print high-res PDF on demand without saving to member database.
+              </Text>
+            </View>
+          )}
+
+          <Text style={styles.sectionHeading}>
+            {isTemp ? 'Temporary Routine Configuration' : (isEditingPlan ? 'Edit Routine Configuration' : 'Plan Configuration')}
+          </Text>
+
+          {isTemp && (
+            <View style={{ marginBottom: 12 }}>
+              <Text style={styles.inputLabel}>Client / Recipient Name (Optional)</Text>
+              <View style={styles.inputWrap}>
+                <TextInput
+                  style={styles.textInput}
+                  value={tempRecipientName}
+                  onChangeText={setTempRecipientName}
+                  placeholder="e.g. John Doe, Walk-in Client..."
+                  placeholderTextColor={PLACEHOLDER_COLOR}
+                  autoCapitalize="words"
+                />
+              </View>
+            </View>
+          )}
 
           {/* Plan Title */}
           <Text style={styles.inputLabel}>Plan Title *</Text>
@@ -1014,13 +1094,44 @@ export const PlanBuilderScreen: React.FC<Props> = ({ route, navigation }) => {
             </View>
           )}
 
-          {/* ── UPDATE / SAVE WORKOUT ROUTINE BUTTON (MOVED TO TOP) ── */}
-          <TouchableOpacity style={styles.savePlanBtn} onPress={handleSavePlan} activeOpacity={0.85}>
-            <Ionicons name="checkmark-done" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
-            <Text style={styles.savePlanBtnText}>
-              {isEditingPlan ? 'UPDATE WORKOUT ROUTINE' : 'SAVE & ACTIVATE WORKOUT PLAN'}
-            </Text>
-          </TouchableOpacity>
+          {/* ── UPDATE / SAVE / EXPORT WORKOUT ROUTINE BUTTON (MOVED TO TOP) ── */}
+          {isTemp ? (
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 14 }}>
+              <TouchableOpacity
+                style={[styles.savePlanBtn, { flex: 1 }]}
+                onPress={handleExportPlanPDF}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="share-outline" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
+                <Text style={styles.savePlanBtnText}>PREVIEW & EXPORT PDF</Text>
+              </TouchableOpacity>
+
+              {selectedExercises.length > 0 && (
+                <TouchableOpacity
+                  style={styles.clearTempRoutineBtn}
+                  onPress={() => {
+                    setSelectedExercises([]);
+                    setTitle('');
+                    setTempRecipientName('');
+                    setAvailableDays(['Day 1']);
+                    setActiveDay('Day 1');
+                    setRoutineType('single');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="refresh-outline" size={17} color="#DC2626" />
+                  <Text style={styles.clearTempRoutineBtnText}>Reset</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.savePlanBtn} onPress={handleSavePlan} activeOpacity={0.85}>
+              <Ionicons name="checkmark-done" size={20} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.savePlanBtnText}>
+                {isEditingPlan ? 'UPDATE WORKOUT ROUTINE' : 'SAVE & ACTIVATE WORKOUT PLAN'}
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {/* ── ROUTINE EXERCISES SECTION ── */}
           <View style={styles.exerciseSectionHeader}>
@@ -2623,5 +2734,53 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.5,
+  },
+  tempRoutineNoticeCard: {
+    backgroundColor: '#E6F4EA',
+    borderWidth: 1.5,
+    borderColor: '#A7D7B5',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  tempNoticeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#D1FAE5',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginBottom: 6,
+  },
+  tempNoticeBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#0A3622',
+    letterSpacing: 0.5,
+  },
+  tempNoticeText: {
+    fontSize: 12.5,
+    color: '#166534',
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  clearTempRoutineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 16,
+    height: 50,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1.5,
+    borderColor: '#FCA5A5',
+    borderRadius: 9999,
+  },
+  clearTempRoutineBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#DC2626',
   },
 });

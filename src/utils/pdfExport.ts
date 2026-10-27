@@ -48,7 +48,7 @@ interface PDFPageDefinition {
  * Multi-day and multi-page routines have accurately numbered pages and zero browser header/footer artifacts.
  */
 export async function exportWorkoutPlanPDF(
-  member: Member,
+  member: Partial<Member> | { name: string; phone?: string; fitness_goals?: string } | null | undefined,
   plan: WorkoutPlan,
   gymName: string = 'GripState Elite Training'
 ): Promise<void> {
@@ -241,11 +241,11 @@ export async function exportWorkoutPlanPDF(
             </div>
 
             <div class="header-right">
-              <div class="member-badge-label">ASSIGNED MEMBER</div>
-              <div class="member-full-name">${member.name}</div>
+              <div class="member-badge-label">${(member as any)?.id ? 'ASSIGNED MEMBER' : 'RECIPIENT'}</div>
+              <div class="member-full-name">${member?.name || 'Walk-in / Temporary Client'}</div>
               <div class="member-sub-info">
-                ${member.phone ? `<span>📞 ${member.phone}</span>` : ''}
-                ${member.fitness_goals ? `<span>🎯 ${member.fitness_goals}</span>` : ''}
+                ${member?.phone ? `<span>📞 ${member.phone}</span>` : ''}
+                ${member?.fitness_goals ? `<span>🎯 ${member.fitness_goals}</span>` : ''}
               </div>
             </div>
           </div>
@@ -795,7 +795,7 @@ export async function exportWorkoutPlanPDF(
     await Sharing.shareAsync(uri, {
       UTI: '.pdf',
       mimeType: 'application/pdf',
-      dialogTitle: `Share ${plan.title} - ${member.name}`,
+      dialogTitle: `Share ${plan.title} - ${member?.name || 'Workout Plan'}`,
     });
   }
 }

@@ -14,6 +14,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/types';
 import { workoutService } from '../../database/services/workoutService';
 import { Exercise, ExerciseCategory } from '../../types';
 import { colors, rounded, shadows } from '../../theme/colors';
@@ -40,6 +43,7 @@ const CATEGORIES: ('All' | ExerciseCategory)[] = [
 ];
 
 export const ExercisesTab: React.FC = () => {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState<'All' | ExerciseCategory>('All');
@@ -147,6 +151,19 @@ export const ExercisesTab: React.FC = () => {
     setModalVisible(true);
   };
 
+  const handleOpenTempRoutine = () => {
+    navigation.navigate('PlanBuilder', { isTemporary: true });
+  };
+
+  const handleCreateTempRoutineFromSelection = () => {
+    const selectedList = exercises.filter((ex) => selectedIds.has(ex.id));
+    exitSelectionMode();
+    navigation.navigate('PlanBuilder', {
+      isTemporary: true,
+      initialExercises: selectedList,
+    });
+  };
+
   const handlePickExerciseImage = async () => {
     // For Web, provide HTML file input to support any format including raw SVG
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -241,6 +258,16 @@ export const ExercisesTab: React.FC = () => {
           <Text style={styles.selectionCount}>
             {selectedIds.size} selected
           </Text>
+
+          <TouchableOpacity
+            style={styles.selectionTempBtn}
+            onPress={handleCreateTempRoutineFromSelection}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="flash-outline" size={15} color="#FFFFFF" />
+            <Text style={styles.selectionTempBtnText}>Temp Routine ({selectedIds.size})</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[
               styles.selectionDeleteBtn,
@@ -256,20 +283,30 @@ export const ExercisesTab: React.FC = () => {
         </View>
       ) : (
         <View style={styles.headerRow}>
-          <View>
+          <View style={{ flex: 1, marginRight: 8 }}>
             <Text style={styles.title}>Exercise Library</Text>
             <Text style={styles.subtitle}>
               {filteredExercises.length} exercises available
             </Text>
           </View>
-          <TouchableOpacity
-            style={styles.addCustomBtn}
-            onPress={handleOpenAddExercise}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="add" size={18} color="#FFFFFF" />
-            <Text style={styles.addCustomBtnText}>Add Exercise</Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.tempRoutineBtn}
+              onPress={handleOpenTempRoutine}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="flash-outline" size={15} color={colors.primary} />
+              <Text style={styles.tempRoutineBtnText}>Temp Routine</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.addCustomBtn}
+              onPress={handleOpenAddExercise}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add" size={18} color="#FFFFFF" />
+              <Text style={styles.addCustomBtnText}>Add Exercise</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -605,19 +642,42 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 2,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tempRoutineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E6F4EA',
+    borderWidth: 1.5,
+    borderColor: '#A7D7B5',
+    paddingHorizontal: 14,
+    height: 44,
+    borderRadius: 9999,
+    gap: 5,
+    ...shadows.soft,
+  },
+  tempRoutineBtnText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
   addCustomBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primary,
-    paddingHorizontal: 20,
-    height: 50,
+    paddingHorizontal: 16,
+    height: 44,
     borderRadius: 9999,
-    gap: 6,
+    gap: 5,
     ...shadows.soft,
   },
   addCustomBtnText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     letterSpacing: 0.3,
   },
@@ -717,21 +777,37 @@ const styles = StyleSheet.create({
   selectionDeleteBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.primary,
-    paddingHorizontal: 20,
-    height: 50,
+    backgroundColor: '#DC2626',
+    paddingHorizontal: 14,
+    height: 44,
     borderRadius: 9999,
-    gap: 6,
+    gap: 5,
     ...shadows.soft,
   },
   selectionDeleteBtnDisabled: {
-    backgroundColor: colors.primaryLight,
+    backgroundColor: '#F87171',
     opacity: 0.5,
   },
   selectionDeleteBtnText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
+  },
+  selectionTempBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 14,
+    height: 44,
+    borderRadius: 9999,
+    gap: 5,
+    ...shadows.soft,
+  },
+  selectionTempBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
 
   // ── 2-COLUMN EXERCISE CARD (Light Theme) ──
